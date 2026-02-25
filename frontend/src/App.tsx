@@ -58,7 +58,7 @@ export default function App() {
   }
 
   // ── Collaborators ────────────────────────────────────────────────────────────
-  const handleSendInvites = useCallback((emails: string[], role: Role) => {
+  const handleSendInvites = useCallback((emails: string[], role: Extract<Role, 'Editor' | 'Viewer'>) => {
     const newCollabs: Collaborator[] = emails.map((email, i) => {
       // Derive a display name from the email local-part
       const local = email.split('@')[0];
@@ -215,7 +215,6 @@ export default function App() {
             activeTab={activeTab}
             onTabChange={setActiveTab}
             collaborators={trip.collaborators}
-            onOpenInvite={() => setInvite(true)}
             onUpdateRole={handleUpdateRole}
             onRemoveCollaborator={handleRemoveCollaborator}
             itinerary={itinerary}

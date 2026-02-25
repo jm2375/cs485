@@ -15,7 +15,6 @@ interface RightPanelProps {
   activeTab: PanelTab;
   onTabChange: (tab: PanelTab) => void;
   collaborators: Collaborator[];
-  onOpenInvite: () => void;
   onUpdateRole: (id: string, role: Role) => void;
   onRemoveCollaborator: (id: string) => void;
   itinerary: ItineraryItem[];
@@ -30,7 +29,6 @@ export function RightPanel({
   activeTab,
   onTabChange,
   collaborators,
-  onOpenInvite,
   onUpdateRole,
   onRemoveCollaborator,
   itinerary,
@@ -96,7 +94,6 @@ export function RightPanel({
         {activeTab === 'collaborators' && (
           <CollaboratorsPanel
             collaborators={collaborators}
-            onOpenInvite={onOpenInvite}
             onUpdateRole={onUpdateRole}
             onRemove={onRemoveCollaborator}
           />
