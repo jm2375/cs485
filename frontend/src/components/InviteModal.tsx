@@ -7,14 +7,14 @@ interface InviteModalProps {
   tripName: string;
   shareLink: string;
   onClose: () => void;
-  onSendInvites: (emails: string[], role: Exclude<Role, 'Owner'> | 'Owner') => void;
+  onSendInvites: (emails: string[], role: Extract<Role, 'Editor' | 'Viewer'>) => void;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function InviteModal({ tripName, shareLink, onClose, onSendInvites }: InviteModalProps) {
   const [emailInput, setEmailInput] = useState('');
-  const [role, setRole] = useState<'Editor' | 'Owner'>('Editor');
+  const [role, setRole] = useState<'Editor' | 'Viewer'>('Editor');
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -153,7 +153,7 @@ export function InviteModal({ tripName, shareLink, onClose, onSendInvites }: Inv
                 role="group"
                 aria-labelledby="role-label"
               >
-                {(['Editor', 'Owner'] as const).map(r => (
+                {(['Editor', 'Viewer'] as const).map(r => (
                   <button
                     key={r}
                     type="button"

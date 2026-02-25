@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { MoreHorizontal, Plus, Settings } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 import type { Collaborator, Role } from '../types';
 import { Avatar } from './Avatar';
+
+const ROLE_ORDER: Role[] = ['Owner', 'Editor', 'Viewer'];
 
 const ROLE_STYLES: Record<Role, string> = {
   Owner:  'bg-blue-100 text-blue-700',
@@ -11,7 +13,6 @@ const ROLE_STYLES: Record<Role, string> = {
 
 interface CollaboratorsPanelProps {
   collaborators: Collaborator[];
-  onOpenInvite: () => void;
   onUpdateRole: (id: string, role: Role) => void;
   onRemove: (id: string) => void;
 }
@@ -73,93 +74,92 @@ function ContextMenu({
 
 export function CollaboratorsPanel({
   collaborators,
-  onOpenInvite,
   onUpdateRole,
   onRemove,
 }: CollaboratorsPanelProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
+  // Group and sort by role order
+  const grouped = ROLE_ORDER.flatMap(role =>
+    collaborators.filter(c => c.role === role)
+  );
+
   return (
     <div className="flex flex-col h-full">
       {/* Section header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-gray-700">
-            {collaborators.length} collaborator{collaborators.length !== 1 ? 's' : ''}
-          </span>
-          <div className="flex -space-x-2" aria-label="Collaborator avatars">
-            {collaborators.slice(0, 5).map(c => (
-              <Avatar key={c.id} name={c.name} color={c.color} size="xs" avatarUrl={c.avatarUrl} />
-            ))}
-            {collaborators.length > 5 && (
-              <div className="w-6 h-6 rounded-full bg-gray-200 ring-2 ring-white flex items-center justify-center text-[10px] text-gray-600 font-semibold">
-                +{collaborators.length - 5}
-              </div>
-            )}
-          </div>
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
+        <span className="text-sm font-semibold text-gray-700">
+          {collaborators.length} collaborator{collaborators.length !== 1 ? 's' : ''}
+        </span>
+        <div className="flex -space-x-2" aria-label="Collaborator avatars">
+          {collaborators.slice(0, 5).map(c => (
+            <Avatar key={c.id} name={c.name} color={c.color} size="xs" avatarUrl={c.avatarUrl} />
+          ))}
+          {collaborators.length > 5 && (
+            <div className="w-6 h-6 rounded-full bg-gray-200 ring-2 ring-white flex items-center justify-center text-[10px] text-gray-600 font-semibold">
+              +{collaborators.length - 5}
+            </div>
+          )}
         </div>
-        <button
-          onClick={onOpenInvite}
-          className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 px-2.5 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
-          aria-label="Invite a collaborator"
-        >
-          <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-          Invite
-        </button>
       </div>
 
-      {/* Collaborator rows */}
-      <ul className="flex-1 overflow-y-auto divide-y divide-gray-50" aria-label="Collaborators list">
-        {collaborators.map(c => (
-          <li
-            key={c.id}
-            className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
-          >
-            <Avatar name={c.name} color={c.color} size="sm" avatarUrl={c.avatarUrl} />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{c.name}</p>
-              <p className="text-xs text-gray-400 truncate">{c.email}</p>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_STYLES[c.role]}`}>
-                {c.role}
-              </span>
-              {c.role !== 'Owner' && (
-                <div className="relative">
-                  <button
-                    onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
-                    className="p-1 rounded-md hover:bg-gray-100 transition-colors"
-                    aria-label={`More options for ${c.name}`}
-                    aria-expanded={openMenuId === c.id}
-                    aria-haspopup="menu"
+      {/* Collaborator rows grouped by role */}
+      <ul className="flex-1 overflow-y-auto" aria-label="Collaborators list">
+        {ROLE_ORDER.map(role => {
+          const group = collaborators.filter(c => c.role === role);
+          if (group.length === 0) return null;
+          return (
+            <li key={role}>
+              {/* Role group header */}
+              <div className="px-4 py-1.5 bg-gray-50 border-y border-gray-100">
+                <span className={`text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${ROLE_STYLES[role]}`}>
+                  {role === 'Owner' ? 'Owner' : `${role}s`}
+                </span>
+              </div>
+              <ul>
+                {group.map(c => (
+                  <li
+                    key={c.id}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0"
                   >
-                    <MoreHorizontal className="w-4 h-4 text-gray-400" />
-                  </button>
-                  {openMenuId === c.id && (
-                    <ContextMenu
-                      collaborator={c}
-                      onUpdateRole={onUpdateRole}
-                      onRemove={onRemove}
-                      onClose={() => setOpenMenuId(null)}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
+                    <Avatar name={c.name} color={c.color} size="sm" avatarUrl={c.avatarUrl} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{c.name}</p>
+                      <p className="text-xs text-gray-400 truncate">{c.email}</p>
+                    </div>
+                    {c.role !== 'Owner' && (
+                      <div className="relative flex-shrink-0">
+                        <button
+                          onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
+                          className="p-1 rounded-md hover:bg-gray-100 transition-colors"
+                          aria-label={`More options for ${c.name}`}
+                          aria-expanded={openMenuId === c.id}
+                          aria-haspopup="menu"
+                        >
+                          <MoreHorizontal className="w-4 h-4 text-gray-400" />
+                        </button>
+                        {openMenuId === c.id && (
+                          <ContextMenu
+                            collaborator={c}
+                            onUpdateRole={onUpdateRole}
+                            onRemove={onRemove}
+                            onClose={() => setOpenMenuId(null)}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </li>
+          );
+        })}
+        {grouped.length === 0 && (
+          <li className="flex items-center justify-center h-24 text-sm text-gray-400">
+            No collaborators yet
           </li>
-        ))}
+        )}
       </ul>
-
-      {/* Footer */}
-      <div className="px-4 py-3 border-t border-gray-100">
-        <button
-          className="flex items-center gap-2 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
-          aria-label="Manage permissions"
-        >
-          <Settings className="w-3.5 h-3.5" aria-hidden="true" />
-          Manage Permissions
-        </button>
-      </div>
     </div>
   );
 }
