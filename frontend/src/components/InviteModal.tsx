@@ -82,14 +82,14 @@ export function InviteModal({ tripName, shareLink, onClose, onSendInvites }: Inv
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-40"
+        className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[1001]"
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Modal */}
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 z-[1002] flex items-center justify-center p-4"
         role="dialog"
         aria-modal="true"
         aria-labelledby="invite-title"
