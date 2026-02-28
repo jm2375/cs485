@@ -17,6 +17,10 @@ function priceLabel(level: number) {
   return '$'.repeat(level);
 }
 
+function priceAriaLabel(level: number) {
+  return (['Free', 'Inexpensive', 'Moderate', 'Expensive', 'Very Expensive'] as const)[level] ?? '';
+}
+
 function StarRating({ rating }: { rating: number }) {
   return (
     <span className="flex items-center gap-0.5" aria-label={`Rating: ${rating} out of 5`}>
@@ -153,7 +157,7 @@ export function POISearch({ itinerary, onAddPOI, onHoverPOI }: POISearchProps) {
                       <span className="text-[11px] text-gray-400">
                         ({poi.reviewCount.toLocaleString()})
                       </span>
-                      <span className="text-[11px] text-gray-400">{priceLabel(poi.priceLevel)}</span>
+                      <span className="text-[11px] text-gray-400" aria-label={priceAriaLabel(poi.priceLevel)}>{priceLabel(poi.priceLevel)}</span>
                     </div>
                     <p className="text-[11px] text-gray-400 truncate mt-0.5">{poi.address}</p>
 

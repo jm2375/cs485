@@ -130,6 +130,14 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
 
+      {/* ── Skip navigation ─────────────────────────────────────────────────── */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-blue-600 focus:text-white focus:rounded-lg focus:text-sm focus:font-medium focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
+
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="flex items-center justify-between gap-4 px-4 py-2.5 bg-white border-b border-gray-200 flex-shrink-0 z-10">
 
@@ -177,7 +185,10 @@ export default function App() {
               <Avatar key={c.id} name={c.name} color={c.color} size="sm" avatarUrl={c.avatarUrl} />
             ))}
             {trip.collaborators.length > 5 && (
-              <div className="w-8 h-8 rounded-full bg-gray-200 ring-2 ring-white flex items-center justify-center text-xs text-gray-600 font-semibold">
+              <div
+                className="w-8 h-8 rounded-full bg-gray-200 ring-2 ring-white flex items-center justify-center text-xs text-gray-600 font-semibold"
+                aria-label={`and ${trip.collaborators.length - 5} more collaborators`}
+              >
                 +{trip.collaborators.length - 5}
               </div>
             )}
@@ -196,7 +207,7 @@ export default function App() {
       </header>
 
       {/* ── Main content ────────────────────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      <main id="main-content" className="flex-1 flex flex-col md:flex-row overflow-hidden">
 
         {/* Map — full width on mobile (fixed height), fills remaining space on desktop */}
         <section

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 import type { Collaborator, Role } from '../types';
 import { Avatar } from './Avatar';
@@ -22,14 +22,18 @@ function ContextMenu({
   onUpdateRole,
   onRemove,
   onClose,
+  triggerRef,
 }: {
   collaborator: Collaborator;
   onUpdateRole: (id: string, role: Role) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref      = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
+  // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
@@ -38,32 +42,69 @@ function ContextMenu({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [onClose]);
 
+  // Focus first item on open
+  useEffect(() => {
+    itemRefs.current[0]?.focus();
+  }, []);
+
+  function handleClose() {
+    onClose();
+    triggerRef.current?.focus();
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    const items = itemRefs.current.filter(Boolean) as HTMLButtonElement[];
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      items[(current + 1) % items.length]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      items[(current - 1 + items.length) % items.length]?.focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      items[0]?.focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      items[items.length - 1]?.focus();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleClose();
+    }
+  }
+
+  const roleItems = (['Editor', 'Viewer'] as Role[]).filter(r => r !== collaborator.role);
+  // roleItems + remove = total menu items; build refs index accordingly
+  // roleItems occupy indices 0..n-1, remove occupies index n
+  const removeIndex = roleItems.length;
+
   return (
     <div
       ref={ref}
       role="menu"
       aria-label={`Options for ${collaborator.name}`}
       className="absolute right-0 top-8 z-20 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 min-w-[160px]"
+      onKeyDown={handleKeyDown}
     >
       <p className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
         Change role
       </p>
-      {(['Editor', 'Viewer'] as Role[])
-        .filter(r => r !== collaborator.role)
-        .map(role => (
-          <button
-            key={role}
-            role="menuitem"
-            onClick={() => { onUpdateRole(collaborator.id, role); onClose(); }}
-            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            Make {role}
-          </button>
-        ))}
+      {roleItems.map((role, i) => (
+        <button
+          key={role}
+          ref={el => { itemRefs.current[i] = el; }}
+          role="menuitem"
+          onClick={() => { onUpdateRole(collaborator.id, role); handleClose(); }}
+          className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+        >
+          Make {role}
+        </button>
+      ))}
       <div className="my-1 border-t border-gray-100" />
       <button
+        ref={el => { itemRefs.current[removeIndex] = el; }}
         role="menuitem"
-        onClick={() => { onRemove(collaborator.id); onClose(); }}
+        onClick={() => { onRemove(collaborator.id); handleClose(); }}
         className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
       >
         Remove
@@ -78,6 +119,11 @@ export function CollaboratorsPanel({
   onRemove,
 }: CollaboratorsPanelProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const setTriggerRef = useCallback((id: string) => (el: HTMLButtonElement | null) => {
+    triggerRefs.current[id] = el;
+  }, []);
 
   // Group and sort by role order
   const grouped = ROLE_ORDER.flatMap(role =>
@@ -96,7 +142,10 @@ export function CollaboratorsPanel({
             <Avatar key={c.id} name={c.name} color={c.color} size="xs" avatarUrl={c.avatarUrl} />
           ))}
           {collaborators.length > 5 && (
-            <div className="w-6 h-6 rounded-full bg-gray-200 ring-2 ring-white flex items-center justify-center text-[10px] text-gray-600 font-semibold">
+            <div
+              className="w-6 h-6 rounded-full bg-gray-200 ring-2 ring-white flex items-center justify-center text-[10px] text-gray-600 font-semibold"
+              aria-label={`and ${collaborators.length - 5} more collaborators`}
+            >
               +{collaborators.length - 5}
             </div>
           )}
@@ -130,6 +179,7 @@ export function CollaboratorsPanel({
                     {c.role !== 'Owner' && (
                       <div className="relative flex-shrink-0">
                         <button
+                          ref={setTriggerRef(c.id)}
                           onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
                           className="p-1 rounded-md hover:bg-gray-100 transition-colors"
                           aria-label={`More options for ${c.name}`}
@@ -144,6 +194,7 @@ export function CollaboratorsPanel({
                             onUpdateRole={onUpdateRole}
                             onRemove={onRemove}
                             onClose={() => setOpenMenuId(null)}
+                            triggerRef={{ current: triggerRefs.current[c.id] ?? null }}
                           />
                         )}
                       </div>

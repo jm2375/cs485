@@ -81,7 +81,7 @@ function ItineraryCard({ item, index, onRemove, overlay, isDragging }: CardProps
       {!overlay && onRemove && (
         <button
           onClick={() => onRemove(item.id)}
-          className="p-1.5 rounded-lg opacity-0 group-hover/item:opacity-100 hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
+          className="p-1.5 rounded-lg opacity-0 group-hover/item:opacity-100 focus:opacity-100 focus-visible:opacity-100 hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
           aria-label={`Remove ${item.poi.name} from itinerary`}
         >
           <Trash2 className="w-4 h-4" />
@@ -317,7 +317,7 @@ export function ItineraryPanel({
                 className={`p-1 rounded-md transition-all ${
                   confirmDay === day
                     ? 'bg-red-100 text-red-500'
-                    : 'text-gray-300 hover:text-red-400 hover:bg-red-50 opacity-0 group-hover:opacity-100'
+                    : 'text-gray-300 hover:text-red-400 hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100'
                 }`}
                 aria-label={`Delete Day ${day}`}
                 aria-expanded={confirmDay === day}

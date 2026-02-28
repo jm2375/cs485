@@ -40,6 +40,8 @@ function makePinIcon(color: string, label: string, category: string, highlighted
     className: '',
     html: `
       <div
+        role="img"
+        aria-label="${safeLabel}"
         title="${safeLabel}"
         style="
           position:relative;

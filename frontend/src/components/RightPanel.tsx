@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Users, Search, MapPin } from 'lucide-react';
 import type { PanelTab, Collaborator, Role, POI, ItineraryItem } from '../types';
 import { CollaboratorsPanel } from './CollaboratorsPanel';
@@ -44,6 +45,28 @@ export function RightPanel({
     { id: 'itinerary',     label: 'Itinerary', Icon: MapPin,  badge: itinerary.length     },
   ];
 
+  const tabIds = tabs.map(t => t.id);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  function handleTabKeyDown(e: React.KeyboardEvent) {
+    const currentIndex = tabIds.indexOf(activeTab);
+    let nextIndex = currentIndex;
+    if (e.key === 'ArrowRight') {
+      nextIndex = (currentIndex + 1) % tabs.length;
+    } else if (e.key === 'ArrowLeft') {
+      nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    } else if (e.key === 'Home') {
+      nextIndex = 0;
+    } else if (e.key === 'End') {
+      nextIndex = tabs.length - 1;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    onTabChange(tabIds[nextIndex]);
+    tabRefs.current[nextIndex]?.focus();
+  }
+
   return (
     <div className="flex flex-col h-full bg-white border-l border-gray-200 overflow-hidden">
       {/* Tab bar */}
@@ -51,14 +74,17 @@ export function RightPanel({
         className="flex border-b border-gray-200 flex-shrink-0"
         role="tablist"
         aria-label="Trip management tabs"
+        onKeyDown={handleTabKeyDown}
       >
-        {tabs.map(({ id, label, Icon, badge }) => (
+        {tabs.map(({ id, label, Icon, badge }, i) => (
           <button
             key={id}
+            ref={el => { tabRefs.current[i] = el; }}
             role="tab"
             aria-selected={activeTab === id}
             aria-controls={`tabpanel-${id}`}
             id={`tab-${id}`}
+            tabIndex={activeTab === id ? 0 : -1}
             onClick={() => onTabChange(id)}
             className={`flex-1 flex flex-col items-center gap-0.5 py-3 text-xs font-medium transition-colors border-b-2 relative ${
               activeTab === id
