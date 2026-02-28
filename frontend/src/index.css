@@ -24,3 +24,57 @@ body,
 .leaflet-container {
   z-index: 0;
 }
+
+/* ── High-contrast mode ────────────────────────────────────────────────────── */
+/* Activated by data-hc="true" on the root div (toggled in App.tsx).           */
+/* Overrides Tailwind utility classes with higher-specificity selectors to      */
+/* bring all UI elements to WCAG AA contrast ratios.                            */
+
+/* 1. Text contrast (WCAG 1.4.3)
+      text-gray-400 on white = ~2.5:1 → override to gray-800 = ~12.6:1
+      text-gray-500 on white = ~4.9:1 → override to gray-900 = ~19.7:1        */
+[data-hc="true"] .text-gray-400 { color: #1f2937; }
+[data-hc="true"] .text-gray-500 { color: #111827; }
+[data-hc="true"] .text-gray-600 { color: #111827; }
+
+/* 2. Placeholder text */
+[data-hc="true"] ::placeholder { color: #4b5563; opacity: 1; }
+
+/* 3. Inactive tabs — both RightPanel and POISearch category tabs (WCAG 1.4.3) */
+[data-hc="true"] [role="tab"][aria-selected="false"] {
+  color: #111827;
+  border-bottom-color: #6b7280;
+}
+[data-hc="true"] [role="tab"][aria-selected="false"]:hover {
+  background-color: #e5e7eb;
+  color: #111827;
+}
+
+/* 4. Borders — make dividers visible (WCAG 1.4.11) */
+[data-hc="true"] .border-gray-100 { border-color: #9ca3af; }
+[data-hc="true"] .border-gray-200 { border-color: #6b7280; }
+
+/* 5. Background surfaces — slightly increase contrast on muted backgrounds */
+[data-hc="true"] .bg-gray-50  { background-color: #f3f4f6; }
+[data-hc="true"] .bg-gray-100 { background-color: #e5e7eb; }
+
+/* 6. Role badges — must come after .bg-gray-100 override above so that the
+      badge background wins the cascade (equal specificity, last rule wins).   */
+[data-hc="true"] [data-role="Viewer"] {
+  background-color: #111827;
+  color: #ffffff;
+}
+[data-hc="true"] [data-role="Owner"] {
+  background-color: #1e40af;
+  color: #ffffff;
+}
+[data-hc="true"] [data-role="Editor"] {
+  background-color: #166534;
+  color: #ffffff;
+}
+
+/* 7. Focus indicators — 3px high-visibility outline (WCAG 2.4.7 / 3.2.1) */
+[data-hc="true"] *:focus-visible {
+  outline: 3px solid #1d4ed8 !important;
+  outline-offset: 2px !important;
+}

@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { Share2, Pencil, X, Check } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { Share2, Pencil, X, Check, SunMoon } from 'lucide-react';
 import type { Trip, Collaborator, Role, POI, ItineraryItem, PanelTab, Toast } from './types';
 import { mockTrip, mockItinerary } from './data/mockData';
 import { MapView } from './components/MapView';
@@ -33,6 +33,11 @@ export default function App() {
   const [nameInput, setNameInput]       = useState(trip.name);
   const [toasts, setToasts]             = useState<Toast[]>([]);
   const [hoveredPOI, setHoveredPOI]     = useState<POI | null>(null);
+  const [highContrast, setHighContrast] = useState(() => localStorage.getItem('hc') === '1');
+
+  useEffect(() => {
+    localStorage.setItem('hc', highContrast ? '1' : '0');
+  }, [highContrast]);
 
   // ── Toast helpers ────────────────────────────────────────────────────────────
   const pushToast = useCallback((message: string, type: Toast['type'] = 'success') => {
@@ -128,7 +133,7 @@ export default function App() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden" data-hc={highContrast ? 'true' : undefined}>
 
       {/* ── Skip navigation ─────────────────────────────────────────────────── */}
       <a
@@ -141,7 +146,7 @@ export default function App() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="flex items-center justify-between gap-4 px-4 py-2.5 bg-white border-b border-gray-200 flex-shrink-0 z-10">
 
-        {/* Trip name (editable) */}
+        {/* Trip name (editable) + high contrast toggle */}
         <div className="flex items-center gap-2 min-w-0">
           {editingName ? (
             <div className="flex items-center gap-1.5">
@@ -172,6 +177,20 @@ export default function App() {
               </button>
             </div>
           )}
+
+          {/* High contrast toggle */}
+          <button
+            onClick={() => setHighContrast(v => !v)}
+            aria-pressed={highContrast}
+            className={`p-1.5 rounded-md transition-colors flex-shrink-0 ${
+              highContrast
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+            aria-label="Toggle high contrast mode"
+          >
+            <SunMoon className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
         </div>
 
         {/* Right side: collaborator avatars + Share button */}

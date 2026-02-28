@@ -161,7 +161,7 @@ export function CollaboratorsPanel({
             <li key={role}>
               {/* Role group header */}
               <div className="px-4 py-1.5 bg-gray-50 border-y border-gray-100">
-                <span className={`text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${ROLE_STYLES[role]}`}>
+                <span data-role={role} className={`text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${ROLE_STYLES[role]}`}>
                   {role === 'Owner' ? 'Owner' : `${role}s`}
                 </span>
               </div>
