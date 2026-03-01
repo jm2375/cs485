@@ -144,7 +144,7 @@ export default function App() {
       </a>
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="flex items-center justify-between gap-4 px-4 py-2.5 bg-white border-b border-gray-200 flex-shrink-0 z-10">
+      <header className="flex items-center justify-between gap-4 px-4 py-2 md:py-2.5 bg-white border-b border-gray-200 flex-shrink-0 z-10">
 
         {/* Trip name (editable) + high contrast toggle */}
         <div className="flex items-center gap-2 min-w-0">
@@ -230,7 +230,7 @@ export default function App() {
 
         {/* Map — full width on mobile (fixed height), fills remaining space on desktop */}
         <section
-          className="h-48 md:h-auto md:flex-1 relative flex-shrink-0"
+          className="h-[50%] min-h-[200px] md:h-auto md:flex-1 relative flex-shrink-0"
           aria-label="Trip map"
         >
           <MapView itinerary={itinerary} highlightPOI={hoveredPOI} />

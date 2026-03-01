@@ -146,9 +146,9 @@ export function MapView({ itinerary, highlightPOI }: MapViewProps) {
         ))}
       </MapContainer>
 
-      {/* Legend */}
+      {/* Legend — hidden on mobile/portrait, shown on desktop only */}
       <div
-        className="absolute bottom-5 left-3 z-[1000] bg-white/95 backdrop-blur-sm rounded-xl shadow-lg px-4 py-3 border border-gray-100"
+        className="hidden md:block absolute bottom-5 left-3 z-[1000] bg-white/95 backdrop-blur-sm rounded-xl shadow-lg px-4 py-3 border border-gray-100"
         aria-label="Map legend"
       >
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Legend</p>

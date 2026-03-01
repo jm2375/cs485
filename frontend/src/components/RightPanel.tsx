@@ -86,7 +86,7 @@ export function RightPanel({
             id={`tab-${id}`}
             tabIndex={activeTab === id ? 0 : -1}
             onClick={() => onTabChange(id)}
-            className={`flex-1 flex flex-col items-center gap-0.5 py-3 text-xs font-medium transition-colors border-b-2 relative ${
+            className={`flex-1 flex flex-col items-center gap-0.5 py-2 min-h-[44px] text-xs font-medium transition-colors border-b-2 relative ${
               activeTab === id
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
@@ -105,7 +105,7 @@ export function RightPanel({
                 </span>
               )}
             </div>
-            {label}
+            <span className="hidden sm:inline">{label}</span>
           </button>
         ))}
       </nav>
