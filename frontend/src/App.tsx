@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Share2, Pencil, X, Check, SunMoon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Share2, Pencil, X, Check, SunMoon, LogOut } from 'lucide-react';
 import type { Trip, Collaborator, Role, POI, ItineraryItem, PanelTab, Toast } from './types';
 import { mockTrip, mockItinerary } from './data/mockData';
 import { MapView } from './components/MapView';
@@ -33,7 +34,9 @@ export default function App() {
   const [toasts, setToasts]             = useState<Toast[]>([]);
   const [hoveredPOI, setHoveredPOI]     = useState<POI | null>(null);
   const [highContrast, setHighContrast] = useState(() => localStorage.getItem('hc') === '1');
-  const wsRef = useRef<WebSocket | null>(null);
+  const [currentUser, setCurrentUser]   = useState<{ displayName: string; email: string } | null>(null);
+  const wsRef    = useRef<WebSocket | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     localStorage.setItem('hc', highContrast ? '1' : '0');
@@ -47,6 +50,11 @@ export default function App() {
         const { tripId: id } = await api.bootstrap();
         if (cancelled) return;
         setTripId(id);
+        // Fetch user info independently so it always shows even if trip load fails.
+        api.getCurrentUser()
+          .then(user => { if (!cancelled) setCurrentUser({ displayName: user.displayName, email: user.email }); })
+          .catch(() => {});
+
         const [tripData, itineraryData] = await Promise.all([
           api.getTrip(id),
           api.getItinerary(id),
@@ -57,27 +65,48 @@ export default function App() {
         setNameInput(tripData.name);
 
         // ── WebSocket for real-time collaboration ─────────────────────────
-        const ws = api.createWSConnection(id);
-        wsRef.current = ws;
+        const BACKOFF = [2000, 4000, 8000, 16000, 32000];
+        let attempts = 0;
 
-        ws.onmessage = (evt) => {
-          // The server may batch multiple newline-separated JSON messages.
-          const lines = (evt.data as string).split('\n').filter(Boolean);
-          for (const line of lines) {
-            try {
-              const { event, data } = JSON.parse(line) as { event: string; data: Record<string, unknown> };
-              handleWSEvent(event, data);
-            } catch { /* ignore malformed frames */ }
-          }
-        };
-        ws.onerror = () => pushToast('Real-time connection error', 'error');
+        function connectWS(tripId: string) {
+          const ws = api.createWSConnection(tripId);
+          wsRef.current = ws;
+
+          ws.onopen = () => { attempts = 0; };
+
+          ws.onmessage = (evt) => {
+            const lines = (evt.data as string).split('\n').filter(Boolean);
+            for (const line of lines) {
+              try {
+                const { event, data } = JSON.parse(line) as { event: string; data: Record<string, unknown> };
+                handleWSEvent(event, data);
+              } catch { /* ignore malformed frames */ }
+            }
+          };
+
+          ws.onerror = () => pushToast('Real-time connection error', 'error');
+
+          ws.onclose = () => {
+            if (cancelled) return;
+            if (attempts < BACKOFF.length) {
+              setTimeout(() => { if (!cancelled) { attempts++; connectWS(tripId); } }, BACKOFF[attempts]);
+            }
+          };
+        }
+
+        connectWS(id);
       } catch (err) {
         console.warn('[App] backend not reachable — using mock data', err);
       }
     }
     init();
+
+    function handleUnload() { wsRef.current?.close(); }
+    window.addEventListener('beforeunload', handleUnload);
+
     return () => {
       cancelled = true;
+      window.removeEventListener('beforeunload', handleUnload);
       wsRef.current?.close();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -147,6 +176,13 @@ export default function App() {
   const dismissToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  function handleLogout() {
+    wsRef.current?.close();
+    api.logout();
+    navigate('/login');
+  }
 
   // ── Trip name ─────────────────────────────────────────────────────────────
   function saveName() {
@@ -321,6 +357,22 @@ export default function App() {
             <Share2 className="w-4 h-4" aria-hidden="true" />
             <span>Share Trip</span>
           </button>
+
+          <div className="flex items-center gap-2 border-l border-gray-200 pl-3">
+            {currentUser && (
+              <span className="hidden sm:block text-sm text-gray-600 truncate max-w-[120px]" title={currentUser.email}>
+                {currentUser.displayName}
+              </span>
+            )}
+            <button
+              onClick={handleLogout}
+              className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              aria-label="Log out"
+              title="Log out"
+            >
+              <LogOut className="w-4 h-4" aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </header>
 

@@ -30,6 +30,13 @@ type inviteTokenData struct {
 	TripID       string `json:"tripId"`
 }
 
+// GetTripInfo returns the name and destination of a trip by ID.
+// Used by the invitation preview handler to show trip details on the accept page.
+func (s *InvitationService) GetTripInfo(tripID string) (name, destination string, err error) {
+	err = s.db.QueryRow(`SELECT name, destination FROM trips WHERE id = ?`, tripID).Scan(&name, &destination)
+	return
+}
+
 // InvitationService manages email invitations: generation, validation, acceptance, revocation.
 type InvitationService struct {
 	db           *sql.DB

@@ -89,6 +89,10 @@ func main() {
 	// Share-link join (requires auth)
 	r.POST("/api/sharelinks/:inviteCode", authMW, tripHandler.JoinByInviteCode)
 
+	// Spec alias: /api/join/:inviteCode → same handlers as /api/sharelinks/:inviteCode
+	r.GET("/api/join/:inviteCode", tripHandler.PreviewByInviteCode)
+	r.POST("/api/join/:inviteCode", authMW, tripHandler.JoinByInviteCode)
+
 	// Invitation accept preview (public)
 	r.GET("/api/invitations/accept/:token", invHandler.GetInvitationPreview)
 	// Invitation accept (requires auth)

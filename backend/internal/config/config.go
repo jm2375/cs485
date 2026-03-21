@@ -18,7 +18,7 @@ func Load() *Config {
 		JWTSecret:    getEnv("JWT_SECRET", "dev-secret-change-in-production"),
 		FrontendURL:  getEnv("FRONTEND_URL", "http://localhost:5173"),
 		SeedData:     getEnvBool("SEED_DATA", true),
-		GoogleAPIKey: getEnv("API_KEY", ""),
+		GoogleAPIKey: getEnv("API_KEY", "AIzaSyCosz7RAdssdjCKmzsopg8aEdp0gjmOnKo"),
 	}
 }
 

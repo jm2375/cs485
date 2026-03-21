@@ -101,11 +101,14 @@ func (h *InvitationHandler) GetInvitationPreview(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "invitation not found or expired"})
 		return
 	}
+	tripName, tripDest, _ := h.invSvc.GetTripInfo(inv.TripID)
 	c.JSON(http.StatusOK, gin.H{
 		"invitationId": inv.ID,
 		"tripId":       inv.TripID,
 		"role":         models.FormatRole(inv.Role),
 		"expiresAt":    inv.ExpiresAt,
+		"tripName":     tripName,
+		"destination":  tripDest,
 	})
 }
 
