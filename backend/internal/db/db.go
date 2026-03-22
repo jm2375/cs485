@@ -8,26 +8,21 @@ import (
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
-	_ "modernc.org/sqlite"
+	_ "github.com/lib/pq"
 )
 
-// Connect opens a SQLite database at path, enables WAL mode and foreign keys,
-// and returns the connection pool.
-func Connect(path string) (*sql.DB, error) {
-	dsn := fmt.Sprintf(
-		"file:%s?_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000",
-		path,
-	)
-	db, err := sql.Open("sqlite", dsn)
+// Connect opens a PostgreSQL database at dsn, configures the connection pool,
+// and verifies connectivity.
+func Connect(dsn string) (*sql.DB, error) {
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("open sqlite: %w", err)
+		return nil, fmt.Errorf("open postgres: %w", err)
 	}
-	// SQLite supports only one concurrent writer; keep the pool tight.
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-	db.SetConnMaxLifetime(0)
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
 	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("ping sqlite: %w", err)
+		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 	return db, nil
 }
@@ -40,11 +35,11 @@ func Migrate(db *sql.DB) error {
 
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
-    id           TEXT PRIMARY KEY,
-    email        TEXT UNIQUE NOT NULL,
-    display_name TEXT NOT NULL,
+    id            TEXT PRIMARY KEY,
+    email         TEXT UNIQUE NOT NULL,
+    display_name  TEXT NOT NULL,
     password_hash TEXT NOT NULL,
-    created_at   TEXT NOT NULL
+    created_at    TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS trips (
@@ -129,13 +124,12 @@ func Seed(db *sql.DB) (*SeedResult, error) {
 	}
 
 	if count > 0 {
-		// Already seeded — just look up the IDs.
 		var ownerID, tripID string
 		if err := db.QueryRow(`SELECT id FROM users WHERE email = 'sarah.chen@example.com'`).Scan(&ownerID); err != nil {
 			return nil, err
 		}
 		if err := db.QueryRow(
-			`SELECT trip_id FROM trip_collaborators WHERE user_id = ? AND role = 'OWNER' LIMIT 1`, ownerID,
+			`SELECT trip_id FROM trip_collaborators WHERE user_id = $1 AND role = 'OWNER' LIMIT 1`, ownerID,
 		).Scan(&tripID); err != nil {
 			return nil, err
 		}
@@ -144,7 +138,6 @@ func Seed(db *sql.DB) (*SeedResult, error) {
 
 	now := fmtTime(time.Now())
 
-	// Shared password hash for all demo accounts (password: "password123").
 	hash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -163,38 +156,34 @@ func Seed(db *sql.DB) (*SeedResult, error) {
 	}
 	for _, u := range users {
 		if _, err := db.Exec(
-			`INSERT INTO users (id, email, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`,
+			`INSERT INTO users (id, email, display_name, password_hash, created_at) VALUES ($1, $2, $3, $4, $5)`,
 			u.id, u.email, u.displayName, hashStr, now,
 		); err != nil {
 			return nil, fmt.Errorf("insert user %s: %w", u.email, err)
 		}
 	}
 
-	// Trip
 	tripID := uuid.New().String()
 	if _, err := db.Exec(
-		`INSERT INTO trips (id, name, destination, invite_code, owner_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO trips (id, name, destination, invite_code, owner_id, created_at) VALUES ($1, $2, $3, $4, $5, $6)`,
 		tripID, "Tokyo Trip 2024", "Tokyo, Japan", "tok-2024-abc123", users[0].id, now,
 	); err != nil {
 		return nil, fmt.Errorf("insert trip: %w", err)
 	}
 
-	// Collaborators
 	for _, u := range users {
 		if _, err := db.Exec(
-			`INSERT INTO trip_collaborators (id, trip_id, user_id, role, joined_at) VALUES (?, ?, ?, ?, ?)`,
+			`INSERT INTO trip_collaborators (id, trip_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4, $5)`,
 			uuid.New().String(), tripID, u.id, u.role, now,
 		); err != nil {
 			return nil, fmt.Errorf("insert collaborator %s: %w", u.email, err)
 		}
 	}
 
-	// POIs
 	if err := seedPOIs(db); err != nil {
 		return nil, fmt.Errorf("seed pois: %w", err)
 	}
 
-	// Demo itinerary
 	type demoItem struct {
 		poiID  string
 		userID string
@@ -210,7 +199,8 @@ func Seed(db *sql.DB) (*SeedResult, error) {
 	}
 	for i, item := range items {
 		if _, err := db.Exec(
-			`INSERT INTO itinerary_items (id, trip_id, poi_id, added_by_user_id, added_by_name, day, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO itinerary_items (id, trip_id, poi_id, added_by_user_id, added_by_name, day, position, created_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 			uuid.New().String(), tripID, item.poiID, item.userID, item.name, item.day, i, now,
 		); err != nil {
 			return nil, fmt.Errorf("insert itinerary item %d: %w", i, err)
@@ -249,9 +239,10 @@ func seedPOIs(db *sql.DB) error {
 	}
 	for _, p := range pois {
 		if _, err := db.Exec(
-			`INSERT OR IGNORE INTO points_of_interest
+			`INSERT INTO points_of_interest
 			 (id, name, category, subcategory, address, rating, review_count, description, image_url, lat, lng, price_level)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			 ON CONFLICT (id) DO NOTHING`,
 			p.id, p.name, p.category, p.subcategory, p.address,
 			p.rating, p.reviewCount, p.description, p.imageURL, p.lat, p.lng, p.priceLevel,
 		); err != nil {
@@ -261,5 +252,4 @@ func seedPOIs(db *sql.DB) error {
 	return nil
 }
 
-// fmtTime formats a time.Time as RFC3339 for storage.
 func fmtTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }

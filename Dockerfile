@@ -12,7 +12,6 @@ WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-# modernc.org/sqlite is pure Go — no CGO required.
 RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd/server/
 
 # ── Stage 3: Final image ───────────────────────────────────────────────────────
@@ -28,8 +27,9 @@ COPY --from=frontend /app/dist  ./dist
 # EB routes external traffic → port 8080 via its nginx reverse proxy
 EXPOSE 8080
 
+# DATABASE_URL and REDIS_URL must be set as environment variables at runtime
+# (EB environment properties, or docker run -e).
 ENV STATIC_DIR=./dist \
-    DATABASE_PATH=./tripplanner.db \
     SEED_DATA=true
 
 CMD ["./server"]

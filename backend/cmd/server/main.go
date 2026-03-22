@@ -23,8 +23,8 @@ func main() {
 	loadDotEnv(".env")
 	cfg := config.Load()
 
-	// ── Database ──────────────────────────────────────────────────────────────
-	database, err := db.Connect(cfg.DatabasePath)
+	// ── Database (PostgreSQL) ─────────────────────────────────────────────────
+	database, err := db.Connect(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("db connect: %v", err)
 	}
@@ -41,7 +41,7 @@ func main() {
 		log.Printf("[main] demo trip ID: %s", seedResult.TripID)
 	}
 
-	// ── In-memory cache (replaces Redis for P4) ───────────────────────────────
+	// ── In-memory cache ───────────────────────────────────────────────────────
 	cacheStore := cache.New()
 
 	// ── WebSocket hub ─────────────────────────────────────────────────────────
