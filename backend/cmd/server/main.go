@@ -137,6 +137,18 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "time": time.Now().Format(time.RFC3339)})
 	})
 
+	// Static file serving (production: React build)
+	// In dev the Vite dev server handles this; set STATIC_DIR=./dist to enable.
+	if cfg.StaticDir != "" {
+		r.Static("/assets", cfg.StaticDir+"/assets")
+		r.StaticFile("/favicon.ico", cfg.StaticDir+"/favicon.ico")
+		// Catch-all: unknown paths → index.html so React Router handles them.
+		r.NoRoute(func(c *gin.Context) {
+			c.File(cfg.StaticDir + "/index.html")
+		})
+		log.Printf("[main] serving static files from %s", cfg.StaticDir)
+	}
+
 	addr := ":" + cfg.Port
 	log.Printf("[main] server listening on %s  (frontend: %s)", addr, cfg.FrontendURL)
 	if err := r.Run(addr); err != nil {

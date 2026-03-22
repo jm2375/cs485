@@ -49,6 +49,7 @@ export default function InviteAcceptPage({ mode }: { mode: 'link' | 'token' }) {
       navigate(`/login?return=${returnUrl}`);
       return;
     }
+    if (!preview) return;
     setState('joining');
     try {
       if (mode === 'link') {

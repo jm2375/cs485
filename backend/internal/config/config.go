@@ -9,6 +9,7 @@ type Config struct {
 	FrontendURL  string
 	SeedData     bool
 	GoogleAPIKey string
+	StaticDir    string // path to React build output; empty = dev mode (no static serving)
 }
 
 func Load() *Config {
@@ -19,6 +20,7 @@ func Load() *Config {
 		FrontendURL:  getEnv("FRONTEND_URL", "http://localhost:5173"),
 		SeedData:     getEnvBool("SEED_DATA", true),
 		GoogleAPIKey: getEnv("API_KEY", "AIzaSyCosz7RAdssdjCKmzsopg8aEdp0gjmOnKo"),
+		StaticDir:    getEnv("STATIC_DIR", ""),
 	}
 }
 
