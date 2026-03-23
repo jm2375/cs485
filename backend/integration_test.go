@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -874,19 +875,22 @@ func TestFullInvitationAcceptFlow(t *testing.T) {
 	}, "")
 	newToken := asJSON(t, lr)["token"].(string)
 
-	// 2. Owner sends an invite
-	invSvc := ts.buildInvSvc(t)
-	inv, err := invSvc.SendEmailInvite(ts.tripID, ts.ownerID, "newcollab@test.com", models.RoleEditor)
+	// 2. Owner sends an invite; use a capturing email service so we can recover
+	//    the raw token that in production travels only via the email link.
+	emailSink := &capturingEmailService{}
+	invSvc := ts.buildInvSvcWith(t, emailSink)
+	_, err := invSvc.SendEmailInvite(ts.tripID, ts.ownerID, "newcollab@test.com", models.RoleEditor)
 	if err != nil {
 		t.Fatalf("send invite: %v", err)
 	}
 
-	// 3. Retrieve the raw token from cache/DB for test purposes
-	//    In production the raw token travels via email link.
-	rawToken := ts.extractRawToken(t, inv.ID)
-	if rawToken == "" {
-		t.Skip("raw token not extractable in test environment — skipping accept flow")
+	// 3. Extract the raw token from the captured invite link.
+	//    Link format: "<frontendURL>/invite/<rawToken>"
+	parts := strings.SplitN(emailSink.lastInviteLink, "/invite/", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		t.Fatal("could not extract raw token from captured invite link")
 	}
+	rawToken := parts[1]
 
 	// 4. Preview is public
 	w1 := ts.doAs(t, http.MethodGet, "/api/invitations/accept/"+rawToken, nil, "")
@@ -930,15 +934,86 @@ func TestInvitationRateLimitPerTrip(t *testing.T) {
 	}
 }
 
+// ── Additional coverage for missing user-story paths ──────────────────────────
+
+// TestRegisterDuplicateEmail verifies that registering with an already-taken
+// email address returns an error (User Story 1 registration path).
+func TestRegisterDuplicateEmail(t *testing.T) {
+	ts := newTestServer(t)
+	// sarah.chen@example.com is already seeded — try to register with it again.
+	w := ts.doAs(t, http.MethodPost, "/api/auth/register", map[string]string{
+		"email": "sarah.chen@example.com", "displayName": "Duplicate", "password": "pass123",
+	}, "")
+	if w.Code == http.StatusCreated {
+		t.Error("expected duplicate email registration to fail, but got 201")
+	}
+}
+
+// TestViewerCannotRemoveFromItinerary verifies that a VIEWER role member cannot
+// delete an itinerary item (User Story 3 RBAC — mirrors the add restriction).
+func TestViewerCannotRemoveFromItinerary(t *testing.T) {
+	ts := newTestServer(t)
+
+	// Fetch the first seeded itinerary item id.
+	w := ts.do(t, http.MethodGet, "/api/trips/"+ts.tripID+"/itinerary", nil)
+	mustStatus(t, w, http.StatusOK)
+	items := asJSON(t, w)["items"].([]interface{})
+	itemID := items[0].(map[string]interface{})["id"].(string)
+
+	// Get a viewer's token.
+	var viewerID string
+	ts.db.QueryRow(`SELECT user_id FROM trip_collaborators WHERE trip_id = ? AND role = 'VIEWER' LIMIT 1`, ts.tripID).Scan(&viewerID)
+	viewerToken, _, _ := ts.authSvc.IssueTokenForUser(viewerID)
+
+	w2 := ts.doAs(t, http.MethodDelete, fmt.Sprintf("/api/trips/%s/itinerary/%s", ts.tripID, itemID), nil, viewerToken)
+	mustStatus(t, w2, http.StatusForbidden)
+}
+
+// TestNonMemberCannotGetItinerary verifies that a user who is not a collaborator
+// on a trip cannot fetch its itinerary (User Story 3 access control).
+func TestNonMemberCannotGetItinerary(t *testing.T) {
+	ts := newTestServer(t)
+
+	// Register a user who has no membership on the seeded trip.
+	ts.doAs(t, http.MethodPost, "/api/auth/register", map[string]string{
+		"email": "outsider@test.com", "displayName": "Outsider", "password": "pass123",
+	}, "")
+	lr := ts.doAs(t, http.MethodPost, "/api/auth/login", map[string]string{
+		"email": "outsider@test.com", "password": "pass123",
+	}, "")
+	outsiderToken := asJSON(t, lr)["token"].(string)
+
+	w := ts.doAs(t, http.MethodGet, "/api/trips/"+ts.tripID+"/itinerary", nil, outsiderToken)
+	mustStatus(t, w, http.StatusForbidden)
+}
+
 // ── Helpers accessible only to tests ─────────────────────────────────────────
 
 // buildInvSvc creates an InvitationService wired to the same DB as the testServer.
 // Used in tests that need to generate real invitation tokens.
 func (ts *testServer) buildInvSvc(t *testing.T) *services.InvitationService {
 	t.Helper()
+	return ts.buildInvSvcWith(t, services.NewMockEmailService())
+}
+
+// buildInvSvcWith is like buildInvSvc but accepts a custom email service, allowing
+// tests to inject a capturingEmailService to recover the raw invite token.
+func (ts *testServer) buildInvSvcWith(t *testing.T, emailSvc services.IEmailService) *services.InvitationService {
+	t.Helper()
 	c := cache.New()
 	hub := websocket.New()
-	return services.NewInvitationService(ts.db, c, services.NewMockEmailService(), hub, "http://localhost:5173")
+	return services.NewInvitationService(ts.db, c, emailSvc, hub, "http://localhost:5173")
+}
+
+// capturingEmailService implements IEmailService and records the last invite link
+// so tests can extract the raw token that would normally be sent only via email.
+type capturingEmailService struct {
+	lastInviteLink string
+}
+
+func (c *capturingEmailService) SendInviteEmail(_, _, _, inviteLink string) error {
+	c.lastInviteLink = inviteLink
+	return nil
 }
 
 // extractRawToken recovers the raw token from the invitation service's token cache.
