@@ -1,22 +1,19 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Search, Star, MapPin, Plus, Check, ChevronDown, X } from 'lucide-react';
 import type { POI, POICategory, ItineraryItem } from '../types';
-import { mockPOIs } from '../data/mockData';
+import { api } from '../api';
 
 type CategoryFilter = POICategory | 'all';
 
 const CATEGORY_TABS: { id: CategoryFilter; label: string; emoji: string }[] = [
-  { id: 'all',         label: 'All',         emoji: '🗺️' },
-  { id: 'restaurant',  label: 'Restaurants', emoji: '🍽️' },
-  { id: 'landmark',    label: 'Landmarks',   emoji: '🏛️' },
-  { id: 'hotel',       label: 'Hotels',      emoji: '🏨' },
-  { id: 'attraction',  label: 'Attractions', emoji: '🎡' },
+  { id: 'all',        label: 'All',         emoji: '🗺️' },
+  { id: 'restaurant', label: 'Restaurants', emoji: '🍽️' },
+  { id: 'landmark',   label: 'Landmarks',   emoji: '🏛️' },
+  { id: 'hotel',      label: 'Hotels',      emoji: '🏨' },
+  { id: 'attraction', label: 'Attractions', emoji: '🎡' },
 ];
 
-function priceLabel(level: number) {
-  return '$'.repeat(level);
-}
-
+function priceLabel(level: number) { return '$'.repeat(level); }
 function priceAriaLabel(level: number) {
   return (['Free', 'Inexpensive', 'Moderate', 'Expensive', 'Very Expensive'] as const)[level] ?? '';
 }
@@ -34,38 +31,44 @@ interface POISearchProps {
   itinerary: ItineraryItem[];
   onAddPOI: (poi: POI, day: number) => void;
   onHoverPOI?: (poi: POI | null) => void;
+  near?: string;
 }
 
-export function POISearch({ itinerary, onAddPOI, onHoverPOI }: POISearchProps) {
+export function POISearch({ itinerary, onAddPOI, onHoverPOI, near }: POISearchProps) {
   const [query, setQuery]           = useState('');
   const [category, setCategory]     = useState<CategoryFilter>('all');
-  const [pickingFor, setPickingFor] = useState<string | null>(null); // poi.id
+  const [results, setResults]       = useState<POI[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [pickingFor, setPickingFor] = useState<string | null>(null);
+
+  // Debounce the text query so we don't hammer the API on every keystroke.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setLoading(true);
+      api.searchPOIs(query, category, near)
+        .then(setResults)
+        .catch(() => setResults([]))
+        .finally(() => setLoading(false));
+    }, 250);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query, category, near]);
 
   const addedIds = useMemo(
     () => new Set(itinerary.map(i => i.poi.id)),
     [itinerary],
   );
 
-  // Sorted unique days already in the itinerary
   const existingDays = useMemo(
     () => [...new Set(itinerary.map(i => i.day))].sort((a, b) => a - b),
     [itinerary],
   );
   const nextNewDay = existingDays.length > 0 ? Math.max(...existingDays) + 1 : 1;
-
-  const results = useMemo(() => {
-    const q = query.toLowerCase();
-    return mockPOIs.filter(poi => {
-      const matchesCat = category === 'all' || poi.category === category;
-      const matchesQ   =
-        !q ||
-        poi.name.toLowerCase().includes(q) ||
-        poi.subcategory.toLowerCase().includes(q) ||
-        poi.address.toLowerCase().includes(q) ||
-        poi.description.toLowerCase().includes(q);
-      return matchesCat && matchesQ;
-    });
-  }, [query, category]);
 
   function handleAddToDay(poi: POI, day: number) {
     onAddPOI(poi, day);
@@ -118,12 +121,12 @@ export function POISearch({ itinerary, onAddPOI, onHoverPOI }: POISearchProps) {
 
       {/* Results count */}
       <p className="px-3 pb-1 text-[11px] text-gray-400">
-        {results.length} place{results.length !== 1 ? 's' : ''} found
+        {loading ? 'Searching…' : `${results.length} place${results.length !== 1 ? 's' : ''} found`}
       </p>
 
       {/* Results list */}
       <div className="flex-1 overflow-y-auto border-t border-gray-100" role="tabpanel">
-        {results.length === 0 ? (
+        {!loading && results.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 gap-2 text-gray-400">
             <MapPin className="w-8 h-8" aria-hidden="true" />
             <p className="text-sm">No places found</p>
@@ -131,8 +134,8 @@ export function POISearch({ itinerary, onAddPOI, onHoverPOI }: POISearchProps) {
         ) : (
           <ul aria-label="Search results">
             {results.map(poi => {
-              const added      = addedIds.has(poi.id);
-              const isPicking  = pickingFor === poi.id;
+              const added     = addedIds.has(poi.id);
+              const isPicking = pickingFor === poi.id;
 
               return (
                 <li
@@ -154,10 +157,10 @@ export function POISearch({ itinerary, onAddPOI, onHoverPOI }: POISearchProps) {
                     <p className="text-[11px] text-gray-500 truncate">{poi.subcategory}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <StarRating rating={poi.rating} />
-                      <span className="text-[11px] text-gray-400">
-                        ({poi.reviewCount.toLocaleString()})
+                      <span className="text-[11px] text-gray-400">({poi.reviewCount.toLocaleString()})</span>
+                      <span className="text-[11px] text-gray-400" aria-label={priceAriaLabel(poi.priceLevel)}>
+                        {priceLabel(poi.priceLevel)}
                       </span>
-                      <span className="text-[11px] text-gray-400" aria-label={priceAriaLabel(poi.priceLevel)}>{priceLabel(poi.priceLevel)}</span>
                     </div>
                     <p className="text-[11px] text-gray-400 truncate mt-0.5">{poi.address}</p>
 
@@ -167,7 +170,6 @@ export function POISearch({ itinerary, onAddPOI, onHoverPOI }: POISearchProps) {
                         <Check className="w-3 h-3" aria-hidden="true" /> Added
                       </span>
                     ) : isPicking ? (
-                      /* Inline day picker */
                       <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={`Choose day for ${poi.name}`}>
                         <span className="text-[11px] text-gray-500 font-medium mr-0.5">Add to:</span>
                         {existingDays.map(day => (

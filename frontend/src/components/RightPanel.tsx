@@ -24,6 +24,7 @@ interface RightPanelProps {
   onDeleteDay: (day: number) => void;
   onReorderItinerary: (items: ItineraryItem[]) => void;
   onHoverPOI?: (poi: POI | null) => void;
+  destination?: string;
 }
 
 export function RightPanel({
@@ -38,6 +39,7 @@ export function RightPanel({
   onDeleteDay,
   onReorderItinerary,
   onHoverPOI,
+  destination,
 }: RightPanelProps) {
   const tabs: Tab[] = [
     { id: 'collaborators', label: 'People',    Icon: Users,   badge: collaborators.length },
@@ -129,6 +131,7 @@ export function RightPanel({
             itinerary={itinerary}
             onAddPOI={onAddPOI}
             onHoverPOI={onHoverPOI}
+            near={destination}
           />
         )}
         {activeTab === 'itinerary' && (
