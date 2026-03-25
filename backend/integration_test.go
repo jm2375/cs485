@@ -244,6 +244,21 @@ func TestAuthRegisterAndLogin(t *testing.T) {
 	mustStatus(t, w3, http.StatusUnauthorized)
 }
 
+func TestLoginUnregisteredUser(t *testing.T) {
+	ts := newTestServer(t)
+	w := ts.doAs(t, http.MethodPost, "/api/auth/login", map[string]string{
+		"email":    "ghost@notregistered.com",
+		"password": "anypassword",
+	}, "")
+	// Expect 404 (not 401) when the email simply doesn't exist
+	mustStatus(t, w, http.StatusNotFound)
+	body := asJSON(t, w)
+	errMsg, _ := body["error"].(string)
+	if !strings.Contains(errMsg, "no account") {
+		t.Errorf("expected 'no account' in error message, got: %q", errMsg)
+	}
+}
+
 func TestAuthMe(t *testing.T) {
 	ts := newTestServer(t)
 	w := ts.do(t, http.MethodGet, "/api/auth/me", nil)

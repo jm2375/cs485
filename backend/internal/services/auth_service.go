@@ -20,6 +20,9 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
+// ErrUserNotFound is returned by Login when no account exists for the given email.
+var ErrUserNotFound = errors.New("user not found")
+
 // AuthService handles user registration, login, and JWT issuance/validation.
 type AuthService struct {
 	db        *sql.DB
@@ -52,7 +55,7 @@ func (s *AuthService) Register(email, displayName, password string) (*models.Use
 func (s *AuthService) Login(email, password string) (string, *models.User, error) {
 	user, err := s.getByEmail(email)
 	if err != nil {
-		return "", nil, errors.New("invalid credentials")
+		return "", nil, ErrUserNotFound
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		return "", nil, errors.New("invalid credentials")

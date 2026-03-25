@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"cs485/internal/middleware"
@@ -55,6 +56,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 	token, user, err := h.authSvc.Login(body.Email, body.Password)
 	if err != nil {
+		if errors.Is(err, services.ErrUserNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no account found with that email"})
+			return
+		}
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
