@@ -12,14 +12,12 @@ import (
 )
 
 var (
-	ErrForbidden          = errors.New("insufficient permissions")
+	ErrForbidden            = errors.New("insufficient permissions")
 	ErrCollaboratorNotFound = errors.New("collaborator not found")
-	ErrCannotRemoveOwner  = errors.New("the trip owner cannot be removed")
+	ErrCannotRemoveOwner    = errors.New("the trip owner cannot be removed")
 )
 
 // CollaboratorService manages trip membership and RBAC enforcement.
-// It satisfies the spec's requirement to expose isCollaborator and hasPermission
-// for use by other modules.
 type CollaboratorService struct {
 	db  *sql.DB
 	hub models.WSHub
@@ -34,7 +32,7 @@ func (s *CollaboratorService) AddCollaborator(tripID, userID string, role models
 	id := uuid.New().String()
 	now := fmtTime(time.Now())
 	if _, err := s.db.Exec(
-		`INSERT INTO trip_collaborators (id, trip_id, user_id, role, joined_at) VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO trip_collaborators (id, trip_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4, $5)`,
 		id, tripID, userID, string(role), now,
 	); err != nil {
 		return nil, fmt.Errorf("add collaborator: %w", err)
@@ -52,10 +50,9 @@ func (s *CollaboratorService) RemoveCollaborator(tripID, targetUserID, requester
 			return ErrForbidden
 		}
 	}
-	// Owners cannot be removed.
 	var role string
 	if err := s.db.QueryRow(
-		`SELECT role FROM trip_collaborators WHERE trip_id = ? AND user_id = ?`, tripID, targetUserID,
+		`SELECT role FROM trip_collaborators WHERE trip_id = $1 AND user_id = $2`, tripID, targetUserID,
 	).Scan(&role); err != nil {
 		return ErrCollaboratorNotFound
 	}
@@ -64,7 +61,7 @@ func (s *CollaboratorService) RemoveCollaborator(tripID, targetUserID, requester
 	}
 
 	if _, err := s.db.Exec(
-		`DELETE FROM trip_collaborators WHERE trip_id = ? AND user_id = ?`, tripID, targetUserID,
+		`DELETE FROM trip_collaborators WHERE trip_id = $1 AND user_id = $2`, tripID, targetUserID,
 	); err != nil {
 		return err
 	}
@@ -84,7 +81,7 @@ func (s *CollaboratorService) UpdateRole(tripID, targetUserID string, newRole mo
 		return nil, errors.New("owner cannot change their own role")
 	}
 	if _, err := s.db.Exec(
-		`UPDATE trip_collaborators SET role = ? WHERE trip_id = ? AND user_id = ?`,
+		`UPDATE trip_collaborators SET role = $1 WHERE trip_id = $2 AND user_id = $3`,
 		string(newRole), tripID, targetUserID,
 	); err != nil {
 		return nil, err
@@ -102,7 +99,7 @@ func (s *CollaboratorService) GetCollaborators(tripID string) ([]models.Collabor
 		`SELECT tc.user_id, u.display_name, u.email, tc.role, tc.joined_at
 		 FROM trip_collaborators tc
 		 JOIN users u ON u.id = tc.user_id
-		 WHERE tc.trip_id = ?
+		 WHERE tc.trip_id = $1
 		 ORDER BY tc.joined_at ASC`,
 		tripID,
 	)
@@ -135,7 +132,7 @@ func (s *CollaboratorService) GetCollaborators(tripID string) ([]models.Collabor
 func (s *CollaboratorService) IsCollaborator(tripID, userID string) (bool, error) {
 	var count int
 	err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM trip_collaborators WHERE trip_id = ? AND user_id = ?`, tripID, userID,
+		`SELECT COUNT(*) FROM trip_collaborators WHERE trip_id = $1 AND user_id = $2`, tripID, userID,
 	).Scan(&count)
 	return count > 0, err
 }
@@ -145,7 +142,7 @@ func (s *CollaboratorService) IsCollaborator(tripID, userID string) (bool, error
 func (s *CollaboratorService) HasPermission(tripID, userID, action string) (bool, error) {
 	var role string
 	err := s.db.QueryRow(
-		`SELECT role FROM trip_collaborators WHERE trip_id = ? AND user_id = ?`, tripID, userID,
+		`SELECT role FROM trip_collaborators WHERE trip_id = $1 AND user_id = $2`, tripID, userID,
 	).Scan(&role)
 	if err != nil {
 		return false, nil
@@ -161,11 +158,10 @@ func (s *CollaboratorService) HasPermission(tripID, userID, action string) (bool
 	return false, nil
 }
 
-// assertRole aborts with ErrForbidden if userID does not have at least minimumRole.
 func (s *CollaboratorService) assertRole(tripID, userID string, minimumRole models.Role) error {
 	var role string
 	if err := s.db.QueryRow(
-		`SELECT role FROM trip_collaborators WHERE trip_id = ? AND user_id = ?`, tripID, userID,
+		`SELECT role FROM trip_collaborators WHERE trip_id = $1 AND user_id = $2`, tripID, userID,
 	).Scan(&role); err != nil {
 		return ErrForbidden
 	}
@@ -180,7 +176,7 @@ func (s *CollaboratorService) getCollaborator(tripID, userID string) (*models.Tr
 	var tc models.TripCollaborator
 	var role, joinedAt string
 	err := s.db.QueryRow(
-		`SELECT id, trip_id, user_id, role, joined_at FROM trip_collaborators WHERE trip_id = ? AND user_id = ?`,
+		`SELECT id, trip_id, user_id, role, joined_at FROM trip_collaborators WHERE trip_id = $1 AND user_id = $2`,
 		tripID, userID,
 	).Scan(&tc.ID, &tc.TripID, &tc.UserID, &role, &joinedAt)
 	if err != nil {

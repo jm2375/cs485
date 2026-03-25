@@ -85,6 +85,7 @@ export const api = {
    * Results are cached in localStorage so repeat calls are instant.
    */
   async bootstrap(): Promise<BootstrapResult> {
+    // 1. Returning Sarah Chen session — use cached bootstrap data.
     const cached = localStorage.getItem('bootstrap_v1');
     if (cached) {
       const data: BootstrapResult = JSON.parse(cached);
@@ -92,11 +93,39 @@ export const api = {
       setTripId(data.tripId);
       return data;
     }
+
+    // 2. A real user is logged in — validate their token first.
+    const existingToken = getToken();
+    if (existingToken) {
+      try {
+        const user = await req<{ id: string }>('GET', '/api/auth/me');
+        const existingTripId = getTripId();
+        if (existingTripId) {
+          // Real user with a known trip — use their credentials directly.
+          return { token: existingToken, tripId: existingTripId, userId: user.id };
+        }
+        // Real user but no trip yet (e.g. just logged in) — borrow the demo
+        // trip ID without touching the user's token or caching bootstrap_v1.
+        const demo = await req<BootstrapResult>('POST', '/api/dev/bootstrap');
+        setTripId(demo.tripId);
+        return { token: existingToken, tripId: demo.tripId, userId: user.id };
+      } catch {
+        // Token is expired or invalid — clear it and fall through.
+        localStorage.removeItem('auth_token');
+      }
+    }
+
+    // 3. No authenticated user — bootstrap as the demo owner (Sarah Chen).
     const data = await req<BootstrapResult>('POST', '/api/dev/bootstrap');
     localStorage.setItem('bootstrap_v1', JSON.stringify(data));
     setToken(data.token);
     setTripId(data.tripId);
     return data;
+  },
+
+  /** Fetch the currently authenticated user's profile. */
+  async getCurrentUser(): Promise<{ id: string; email: string; displayName: string }> {
+    return req('GET', '/api/auth/me');
   },
 
   /** Full trip detail including collaborators with online status. */
@@ -150,6 +179,58 @@ export const api = {
   /** Remove a collaborator from a trip. */
   async removeCollaborator(tripId: string, userId: string): Promise<void> {
     await req<void>('DELETE', `/api/trips/${tripId}/collaborators/${userId}`);
+  },
+
+  /** Returns true if a JWT token is stored locally. */
+  isAuthenticated(): boolean { return !!getToken(); },
+
+  /** Clear all locally stored auth state (logout). */
+  logout(): void {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('trip_id');
+    localStorage.removeItem('bootstrap_v1');
+  },
+
+  /** Log in with email + password. Stores the token and clears any bootstrap cache. */
+  async login(email: string, password: string): Promise<{ token: string; user: { id: string; email: string; displayName: string } }> {
+    const data = await req<{ token: string; user: { id: string; email: string; displayName: string } }>(
+      'POST', '/api/auth/login', { email, password }
+    );
+    localStorage.removeItem('bootstrap_v1');
+    localStorage.removeItem('trip_id');
+    setToken(data.token);
+    return data;
+  },
+
+  /** Register a new account. Stores the token and clears any bootstrap cache. */
+  async register(email: string, displayName: string, password: string): Promise<{ token: string; user: { id: string; email: string; displayName: string } }> {
+    const data = await req<{ token: string; user: { id: string; email: string; displayName: string } }>(
+      'POST', '/api/auth/register', { email, displayName, password }
+    );
+    localStorage.removeItem('bootstrap_v1');
+    localStorage.removeItem('trip_id');
+    setToken(data.token);
+    return data;
+  },
+
+  /** Preview an email invitation token (public — no auth needed). */
+  async getInvitePreview(token: string): Promise<{ invitationId: string; tripId: string; tripName: string; destination: string; role: string; expiresAt: string }> {
+    return req('GET', `/api/invitations/accept/${encodeURIComponent(token)}`);
+  },
+
+  /** Accept an email invitation (requires auth). */
+  async acceptInvitation(token: string): Promise<void> {
+    await req('POST', `/api/invitations/accept/${encodeURIComponent(token)}`);
+  },
+
+  /** Preview a shareable invite link (public — no auth needed). */
+  async getShareLinkPreview(inviteCode: string): Promise<{ tripId: string; name: string; destination: string }> {
+    return req('GET', `/api/join/${encodeURIComponent(inviteCode)}`);
+  },
+
+  /** Join a trip via shareable link (requires auth). */
+  async joinByInviteCode(inviteCode: string): Promise<void> {
+    await req('POST', `/api/join/${encodeURIComponent(inviteCode)}`);
   },
 
   /**

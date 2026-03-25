@@ -30,7 +30,7 @@ func NewAuthService(db *sql.DB, jwtSecret string) *AuthService {
 	return &AuthService{db: db, jwtSecret: []byte(jwtSecret)}
 }
 
-// Register creates a new user. Returns ErrEmailTaken if the email is already used.
+// Register creates a new user. Returns an error if the email is already used.
 func (s *AuthService) Register(email, displayName, password string) (*models.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -39,7 +39,7 @@ func (s *AuthService) Register(email, displayName, password string) (*models.Use
 	id := uuid.New().String()
 	now := fmtTime(time.Now())
 	_, err = s.db.Exec(
-		`INSERT INTO users (id, email, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO users (id, email, display_name, password_hash, created_at) VALUES ($1, $2, $3, $4, $5)`,
 		id, email, displayName, string(hash), now,
 	)
 	if err != nil {
@@ -100,7 +100,7 @@ func (s *AuthService) GetByID(id string) (*models.User, error) {
 	var u models.User
 	var createdAt string
 	err := s.db.QueryRow(
-		`SELECT id, email, display_name, password_hash, created_at FROM users WHERE id = ?`, id,
+		`SELECT id, email, display_name, password_hash, created_at FROM users WHERE id = $1`, id,
 	).Scan(&u.ID, &u.Email, &u.DisplayName, &u.PasswordHash, &createdAt)
 	if err != nil {
 		return nil, err
@@ -113,7 +113,7 @@ func (s *AuthService) getByEmail(email string) (*models.User, error) {
 	var u models.User
 	var createdAt string
 	err := s.db.QueryRow(
-		`SELECT id, email, display_name, password_hash, created_at FROM users WHERE email = ?`, email,
+		`SELECT id, email, display_name, password_hash, created_at FROM users WHERE email = $1`, email,
 	).Scan(&u.ID, &u.Email, &u.DisplayName, &u.PasswordHash, &createdAt)
 	if err != nil {
 		return nil, err

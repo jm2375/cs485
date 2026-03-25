@@ -1,5 +1,4 @@
-// Package cache provides a simple in-memory key-value store with TTL,
-// replacing Redis for the P4 development stage.
+// Package cache provides a simple in-memory key-value store with TTL.
 package cache
 
 import (
@@ -10,7 +9,7 @@ import (
 
 type entry struct {
 	value     string
-	expiresAt time.Time // zero means no expiry
+	expiresAt time.Time
 }
 
 // Store is a thread-safe in-memory cache with optional TTL per key.
@@ -60,7 +59,6 @@ func (s *Store) Del(key string) {
 }
 
 // Incr atomically increments an integer counter, setting a TTL on first create.
-// Returns the new counter value.
 func (s *Store) Incr(key string, ttl time.Duration) int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()

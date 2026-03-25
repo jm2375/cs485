@@ -23,8 +23,8 @@ func main() {
 	loadDotEnv(".env")
 	cfg := config.Load()
 
-	// ── Database ──────────────────────────────────────────────────────────────
-	database, err := db.Connect(cfg.DatabasePath)
+	// ── Database (PostgreSQL) ─────────────────────────────────────────────────
+	database, err := db.Connect(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("db connect: %v", err)
 	}
@@ -41,7 +41,7 @@ func main() {
 		log.Printf("[main] demo trip ID: %s", seedResult.TripID)
 	}
 
-	// ── In-memory cache (replaces Redis for P4) ───────────────────────────────
+	// ── In-memory cache ───────────────────────────────────────────────────────
 	cacheStore := cache.New()
 
 	// ── WebSocket hub ─────────────────────────────────────────────────────────
@@ -89,6 +89,10 @@ func main() {
 	// Share-link join (requires auth)
 	r.POST("/api/sharelinks/:inviteCode", authMW, tripHandler.JoinByInviteCode)
 
+	// Spec alias: /api/join/:inviteCode → same handlers as /api/sharelinks/:inviteCode
+	r.GET("/api/join/:inviteCode", tripHandler.PreviewByInviteCode)
+	r.POST("/api/join/:inviteCode", authMW, tripHandler.JoinByInviteCode)
+
 	// Invitation accept preview (public)
 	r.GET("/api/invitations/accept/:token", invHandler.GetInvitationPreview)
 	// Invitation accept (requires auth)
@@ -132,6 +136,18 @@ func main() {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "time": time.Now().Format(time.RFC3339)})
 	})
+
+	// Static file serving (production: React build)
+	// In dev the Vite dev server handles this; set STATIC_DIR=./dist to enable.
+	if cfg.StaticDir != "" {
+		r.Static("/assets", cfg.StaticDir+"/assets")
+		r.StaticFile("/favicon.ico", cfg.StaticDir+"/favicon.ico")
+		// Catch-all: unknown paths → index.html so React Router handles them.
+		r.NoRoute(func(c *gin.Context) {
+			c.File(cfg.StaticDir + "/index.html")
+		})
+		log.Printf("[main] serving static files from %s", cfg.StaticDir)
+	}
 
 	addr := ":" + cfg.Port
 	log.Printf("[main] server listening on %s  (frontend: %s)", addr, cfg.FrontendURL)

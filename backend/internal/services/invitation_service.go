@@ -18,16 +18,22 @@ import (
 )
 
 var (
-	ErrInviteRateLimited  = errors.New("rate limit exceeded: too many invitations")
-	ErrInviteAlreadySent  = errors.New("an active invitation already exists for this email")
-	ErrInviteNotFound     = errors.New("invitation not found")
+	ErrInviteRateLimited   = errors.New("rate limit exceeded: too many invitations")
+	ErrInviteAlreadySent   = errors.New("an active invitation already exists for this email")
+	ErrInviteNotFound      = errors.New("invitation not found")
 	ErrInviteExpiredOrUsed = errors.New("invitation token is expired or already used")
-	ErrNotOwner           = errors.New("only the trip owner or an editor can perform this action")
+	ErrNotOwner            = errors.New("only the trip owner or an editor can perform this action")
 )
 
 type inviteTokenData struct {
 	InvitationID string `json:"invitationId"`
 	TripID       string `json:"tripId"`
+}
+
+// GetTripInfo returns the name and destination of a trip by ID.
+func (s *InvitationService) GetTripInfo(tripID string) (name, destination string, err error) {
+	err = s.db.QueryRow(`SELECT name, destination FROM trips WHERE id = $1`, tripID).Scan(&name, &destination)
+	return
 }
 
 // InvitationService manages email invitations: generation, validation, acceptance, revocation.
@@ -47,11 +53,11 @@ func NewInvitationService(
 	frontendURL string,
 ) *InvitationService {
 	return &InvitationService{
-		db:          db,
-		cache:       c,
+		db:           db,
+		cache:        c,
 		emailService: email,
-		hub:         hub,
-		frontendURL: frontendURL,
+		hub:          hub,
+		frontendURL:  frontendURL,
 	}
 }
 
@@ -62,10 +68,9 @@ func (s *InvitationService) SendEmailInvite(tripID, inviterID, email string, rol
 		return nil, err
 	}
 
-	// Prevent duplicate pending invitations to the same address.
 	var existing int
 	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM invitations WHERE trip_id = ? AND invitee_email = ? AND status = 'PENDING'`,
+		`SELECT COUNT(*) FROM invitations WHERE trip_id = $1 AND invitee_email = $2 AND status = 'PENDING'`,
 		tripID, email,
 	).Scan(&existing); err != nil {
 		return nil, err
@@ -85,24 +90,21 @@ func (s *InvitationService) SendEmailInvite(tripID, inviterID, email string, rol
 	now := fmtTime(time.Now())
 	if _, err := s.db.Exec(
 		`INSERT INTO invitations (id, trip_id, inviter_id, invitee_email, token_hash, role, status, expires_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)`,
+		 VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7, $8)`,
 		id, tripID, inviterID, email, tokenHash, string(role), fmtTime(expiresAt), now,
 	); err != nil {
 		return nil, fmt.Errorf("insert invitation: %w", err)
 	}
 
-	// Cache the raw token → { invitationId, tripId } for fast lookup.
 	data, _ := json.Marshal(inviteTokenData{InvitationID: id, TripID: tripID})
 	s.cache.Set("invite:"+tokenHash, string(data), 7*24*time.Hour)
 
-	// Look up trip + inviter for the email body.
 	var tripName, inviterName string
-	s.db.QueryRow(`SELECT name FROM trips WHERE id = ?`, tripID).Scan(&tripName)
-	s.db.QueryRow(`SELECT display_name FROM users WHERE id = ?`, inviterID).Scan(&inviterName)
+	s.db.QueryRow(`SELECT name FROM trips WHERE id = $1`, tripID).Scan(&tripName)
+	s.db.QueryRow(`SELECT display_name FROM users WHERE id = $1`, inviterID).Scan(&inviterName)
 
 	inviteLink := fmt.Sprintf("%s/invite/%s", s.frontendURL, rawToken)
 	if err := s.emailService.SendInviteEmail(email, inviterName, tripName, inviteLink); err != nil {
-		// Non-fatal — invitation is already persisted.
 		fmt.Printf("[invitation] email send failed for %s: %v\n", email, err)
 	}
 
@@ -142,18 +144,17 @@ func (s *InvitationService) AcceptInvitation(rawToken, userID string) (*models.T
 	collabID := uuid.New().String()
 	now := fmtTime(time.Now())
 
-	// Create collaborator (INSERT OR IGNORE so accepting twice is idempotent).
+	// ON CONFLICT DO NOTHING makes accepting twice idempotent.
 	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO trip_collaborators (id, trip_id, user_id, role, joined_at)
-		 VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO trip_collaborators (id, trip_id, user_id, role, joined_at)
+		 VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
 		collabID, inv.TripID, userID, string(inv.Role), now,
 	); err != nil {
 		return nil, fmt.Errorf("insert collaborator: %w", err)
 	}
 
-	// Mark invitation as accepted.
 	if _, err := tx.Exec(
-		`UPDATE invitations SET status = 'ACCEPTED' WHERE id = ?`, inv.ID,
+		`UPDATE invitations SET status = 'ACCEPTED' WHERE id = $1`, inv.ID,
 	); err != nil {
 		return nil, err
 	}
@@ -162,12 +163,10 @@ func (s *InvitationService) AcceptInvitation(rawToken, userID string) (*models.T
 		return nil, err
 	}
 
-	// Evict the token from the cache.
 	s.cache.Del("invite:" + hash)
 
-	// Broadcast to trip room.
 	var displayName string
-	s.db.QueryRow(`SELECT display_name FROM users WHERE id = ?`, userID).Scan(&displayName)
+	s.db.QueryRow(`SELECT display_name FROM users WHERE id = $1`, userID).Scan(&displayName)
 	s.hub.BroadcastToTrip(inv.TripID, "collaborator_joined", map[string]interface{}{
 		"userId":      userID,
 		"displayName": displayName,
@@ -183,7 +182,7 @@ func (s *InvitationService) AcceptInvitation(rawToken, userID string) (*models.T
 	}, nil
 }
 
-// RevokeInvitation cancels a pending invitation; only the trip owner or an editor may do this.
+// RevokeInvitation cancels a pending invitation.
 func (s *InvitationService) RevokeInvitation(invitationID, requesterID string) error {
 	inv, err := s.getByID(invitationID)
 	if err != nil {
@@ -193,17 +192,16 @@ func (s *InvitationService) RevokeInvitation(invitationID, requesterID string) e
 		return errors.New("invitation is no longer pending")
 	}
 
-	// Verify requester has at least EDITOR role.
 	var role string
 	if err := s.db.QueryRow(
-		`SELECT role FROM trip_collaborators WHERE trip_id = ? AND user_id = ?`,
+		`SELECT role FROM trip_collaborators WHERE trip_id = $1 AND user_id = $2`,
 		inv.TripID, requesterID,
 	).Scan(&role); err != nil || (role != "OWNER" && role != "EDITOR") {
 		return ErrNotOwner
 	}
 
 	if _, err := s.db.Exec(
-		`UPDATE invitations SET status = 'REVOKED' WHERE id = ?`, invitationID,
+		`UPDATE invitations SET status = 'REVOKED' WHERE id = $1`, invitationID,
 	); err != nil {
 		return err
 	}
@@ -214,10 +212,10 @@ func (s *InvitationService) RevokeInvitation(invitationID, requesterID string) e
 // ListInvitations returns all invitations for a trip, optionally filtered by status.
 func (s *InvitationService) ListInvitations(tripID string, status *models.InvitationStatus) ([]*models.Invitation, error) {
 	query := `SELECT id, trip_id, inviter_id, invitee_email, token_hash, role, status, expires_at, created_at
-	          FROM invitations WHERE trip_id = ?`
+	          FROM invitations WHERE trip_id = $1`
 	args := []interface{}{tripID}
 	if status != nil {
-		query += ` AND status = ?`
+		query += ` AND status = $2`
 		args = append(args, string(*status))
 	}
 	query += ` ORDER BY created_at DESC`
@@ -244,7 +242,7 @@ func (s *InvitationService) ListInvitations(tripID string, status *models.Invita
 func (s *InvitationService) getByID(id string) (*models.Invitation, error) {
 	row := s.db.QueryRow(
 		`SELECT id, trip_id, inviter_id, invitee_email, token_hash, role, status, expires_at, created_at
-		 FROM invitations WHERE id = ?`, id,
+		 FROM invitations WHERE id = $1`, id,
 	)
 	return scanInvitation(row)
 }
@@ -252,7 +250,7 @@ func (s *InvitationService) getByID(id string) (*models.Invitation, error) {
 func (s *InvitationService) getByTokenHash(hash string) (*models.Invitation, error) {
 	row := s.db.QueryRow(
 		`SELECT id, trip_id, inviter_id, invitee_email, token_hash, role, status, expires_at, created_at
-		 FROM invitations WHERE token_hash = ?`, hash,
+		 FROM invitations WHERE token_hash = $1`, hash,
 	)
 	return scanInvitation(row)
 }

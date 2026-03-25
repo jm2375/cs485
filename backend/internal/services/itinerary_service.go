@@ -34,7 +34,7 @@ func (s *ItineraryService) GetItinerary(tripID string) ([]*models.ItineraryItem,
 		        p.description, p.image_url, p.lat, p.lng, p.price_level
 		 FROM itinerary_items ii
 		 JOIN points_of_interest p ON p.id = ii.poi_id
-		 WHERE ii.trip_id = ?
+		 WHERE ii.trip_id = $1
 		 ORDER BY ii.day ASC, ii.position ASC`, tripID,
 	)
 	if err != nil {
@@ -54,12 +54,10 @@ func (s *ItineraryService) GetItinerary(tripID string) ([]*models.ItineraryItem,
 }
 
 // AddPOI adds a point of interest to the trip itinerary.
-// Returns ErrAlreadyOnItinerary if the POI is already present on this trip.
 func (s *ItineraryService) AddPOI(tripID, poiID, userID string, day int, notes string) (*models.ItineraryItem, error) {
-	// Duplicate check (enforced by UNIQUE constraint + early check for a better error).
 	var existing int
 	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM itinerary_items WHERE trip_id = ? AND poi_id = ?`, tripID, poiID,
+		`SELECT COUNT(*) FROM itinerary_items WHERE trip_id = $1 AND poi_id = $2`, tripID, poiID,
 	).Scan(&existing); err != nil {
 		return nil, err
 	}
@@ -69,19 +67,18 @@ func (s *ItineraryService) AddPOI(tripID, poiID, userID string, day int, notes s
 
 	var position int
 	s.db.QueryRow(
-		`SELECT COALESCE(MAX(position), -1) + 1 FROM itinerary_items WHERE trip_id = ? AND day = ?`,
+		`SELECT COALESCE(MAX(position), -1) + 1 FROM itinerary_items WHERE trip_id = $1 AND day = $2`,
 		tripID, day,
 	).Scan(&position)
 
-	// Fetch user name.
 	var addedByName string
-	s.db.QueryRow(`SELECT display_name FROM users WHERE id = ?`, userID).Scan(&addedByName)
+	s.db.QueryRow(`SELECT display_name FROM users WHERE id = $1`, userID).Scan(&addedByName)
 
 	id := uuid.New().String()
 	now := fmtTime(time.Now())
 	if _, err := s.db.Exec(
 		`INSERT INTO itinerary_items (id, trip_id, poi_id, added_by_user_id, added_by_name, day, notes, position, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		id, tripID, poiID, userID, addedByName, day, notes, position, now,
 	); err != nil {
 		return nil, fmt.Errorf("insert itinerary item: %w", err)
@@ -99,10 +96,10 @@ func (s *ItineraryService) AddPOI(tripID, poiID, userID string, day int, notes s
 	return item, nil
 }
 
-// RemoveItem deletes an itinerary item. Any trip collaborator with write permission may remove items.
+// RemoveItem deletes an itinerary item.
 func (s *ItineraryService) RemoveItem(tripID, itemID string) error {
 	res, err := s.db.Exec(
-		`DELETE FROM itinerary_items WHERE id = ? AND trip_id = ?`, itemID, tripID,
+		`DELETE FROM itinerary_items WHERE id = $1 AND trip_id = $2`, itemID, tripID,
 	)
 	if err != nil {
 		return err
@@ -124,9 +121,6 @@ type rowScanner interface {
 	Scan(dest ...interface{}) error
 }
 
-// scanItemWithPOI scans a row that was produced by a JOIN between itinerary_items and points_of_interest.
-// This avoids the N+1 query deadlock that occurs when GetByID is called while a rows cursor is open
-// on the single SQLite connection.
 func scanItemWithPOI(row rowScanner) (*models.ItineraryItem, error) {
 	var item models.ItineraryItem
 	var poi models.POI
@@ -152,7 +146,7 @@ func (s *ItineraryService) getByID(id string) (*models.ItineraryItem, error) {
 		        p.description, p.image_url, p.lat, p.lng, p.price_level
 		 FROM itinerary_items ii
 		 JOIN points_of_interest p ON p.id = ii.poi_id
-		 WHERE ii.id = ?`, id,
+		 WHERE ii.id = $1`, id,
 	)
 	return scanItemWithPOI(row)
 }

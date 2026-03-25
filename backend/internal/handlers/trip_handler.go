@@ -16,8 +16,6 @@ import (
 )
 
 // TripService wraps trip-level DB operations and holds the seed result.
-// It is not a standalone service file so that the seed result can be shared
-// with AuthHandler for the dev bootstrap endpoint.
 type TripService struct {
 	database    *sql.DB
 	collabSvc   *services.CollaboratorService
@@ -68,13 +66,12 @@ func (h *TripHandler) Create(c *gin.Context) {
 	now := fmtTime(time.Now())
 
 	if _, err := h.svc.database.Exec(
-		`INSERT INTO trips (id, name, destination, invite_code, owner_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO trips (id, name, destination, invite_code, owner_id, created_at) VALUES ($1, $2, $3, $4, $5, $6)`,
 		tripID, body.Name, body.Destination, inviteCode, ownerID, now,
 	); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "create trip failed"})
 		return
 	}
-	// Owner is automatically a collaborator.
 	if _, err := h.svc.collabSvc.AddCollaborator(tripID, ownerID, models.RoleOwner); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "add owner failed"})
 		return
@@ -115,7 +112,7 @@ func (h *TripHandler) GetShareLink(c *gin.Context) {
 		return
 	}
 	var inviteCode string
-	if err := h.svc.database.QueryRow(`SELECT invite_code FROM trips WHERE id = ?`, tripID).Scan(&inviteCode); err != nil {
+	if err := h.svc.database.QueryRow(`SELECT invite_code FROM trips WHERE id = $1`, tripID).Scan(&inviteCode); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "trip not found"})
 		return
 	}
@@ -135,7 +132,7 @@ func (h *TripHandler) RegenerateShareLink(c *gin.Context) {
 		return
 	}
 	newCode := uuid.New().String()
-	if _, err := h.svc.database.Exec(`UPDATE trips SET invite_code = ? WHERE id = ?`, newCode, tripID); err != nil {
+	if _, err := h.svc.database.Exec(`UPDATE trips SET invite_code = $1 WHERE id = $2`, newCode, tripID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "update failed"})
 		return
 	}
@@ -146,12 +143,11 @@ func (h *TripHandler) RegenerateShareLink(c *gin.Context) {
 }
 
 // PreviewByInviteCode godoc  GET /api/sharelinks/:inviteCode
-// Public endpoint — returns trip name so a visitor can decide whether to join.
 func (h *TripHandler) PreviewByInviteCode(c *gin.Context) {
 	code := c.Param("inviteCode")
 	var tripID, name, destination string
 	if err := h.svc.database.QueryRow(
-		`SELECT id, name, destination FROM trips WHERE invite_code = ?`, code,
+		`SELECT id, name, destination FROM trips WHERE invite_code = $1`, code,
 	).Scan(&tripID, &name, &destination); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "invite link not found"})
 		return
@@ -166,7 +162,7 @@ func (h *TripHandler) JoinByInviteCode(c *gin.Context) {
 
 	var tripID string
 	if err := h.svc.database.QueryRow(
-		`SELECT id FROM trips WHERE invite_code = ?`, code,
+		`SELECT id FROM trips WHERE invite_code = $1`, code,
 	).Scan(&tripID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "invite link not found"})
 		return
@@ -185,7 +181,7 @@ func (h *TripHandler) JoinByInviteCode(c *gin.Context) {
 	}
 
 	var displayName string
-	h.svc.database.QueryRow(`SELECT display_name FROM users WHERE id = ?`, userID).Scan(&displayName)
+	h.svc.database.QueryRow(`SELECT display_name FROM users WHERE id = $1`, userID).Scan(&displayName)
 	h.svc.hub.BroadcastToTrip(tripID, "collaborator_joined", map[string]interface{}{
 		"userId":      userID,
 		"displayName": displayName,
@@ -205,7 +201,7 @@ func (h *TripHandler) buildTripDetail(tripID string) (*models.TripDetail, error)
 	var trip models.Trip
 	var createdAt string
 	if err := h.svc.database.QueryRow(
-		`SELECT id, name, destination, invite_code, owner_id, created_at FROM trips WHERE id = ?`, tripID,
+		`SELECT id, name, destination, invite_code, owner_id, created_at FROM trips WHERE id = $1`, tripID,
 	).Scan(&trip.ID, &trip.Name, &trip.Destination, &trip.InviteCode, &trip.OwnerID, &createdAt); err != nil {
 		return nil, err
 	}

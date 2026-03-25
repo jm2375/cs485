@@ -11,8 +11,8 @@ import (
 
 // POIService handles searching and fetching points of interest.
 // When a GooglePlacesClient is provided, live results are fetched from Google
-// Places and cached into SQLite. Without a client the service falls back to the
-// local database only (seeded demo data or previously cached results).
+// Places and upserted into PostgreSQL. Without a client the service falls back
+// to the local database only (seeded demo data or previously cached results).
 type POIService struct {
 	db     *sql.DB
 	google *GooglePlacesClient // nil → local-only mode
@@ -23,7 +23,6 @@ func NewPOIService(db *sql.DB, google *GooglePlacesClient) *POIService {
 }
 
 // Search returns POIs matching the optional text query, category, and location.
-// When Google Places is configured the live API is used and results are cached.
 func (s *POIService) Search(query, category, near string) ([]*models.POI, error) {
 	if s.google != nil {
 		pois, err := s.google.Search(query, category, near)
@@ -37,13 +36,13 @@ func (s *POIService) Search(query, category, near string) ([]*models.POI, error)
 	return s.searchLocal(query, category)
 }
 
-// GetByID fetches a single POI by ID from the local cache.
+// GetByID fetches a single POI by ID from the local database.
 func (s *POIService) GetByID(id string) (*models.POI, error) {
 	p := &models.POI{}
 	err := s.db.QueryRow(
 		`SELECT id, name, category, subcategory, address, rating, review_count,
 		        description, image_url, lat, lng, price_level
-		 FROM points_of_interest WHERE id = ?`, id,
+		 FROM points_of_interest WHERE id = $1`, id,
 	).Scan(&p.ID, &p.Name, &p.Category, &p.Subcategory, &p.Address,
 		&p.Rating, &p.ReviewCount, &p.Description, &p.ImageURL, &p.Lat, &p.Lng, &p.PriceLevel)
 	if err != nil {
@@ -54,19 +53,22 @@ func (s *POIService) GetByID(id string) (*models.POI, error) {
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
-// searchLocal queries only the local SQLite database.
 func (s *POIService) searchLocal(query, category string) ([]*models.POI, error) {
 	var conditions []string
 	var args []interface{}
+	paramIdx := 1
 
 	if category != "" && category != "all" {
-		conditions = append(conditions, "category = ?")
+		conditions = append(conditions, fmt.Sprintf("category = $%d", paramIdx))
 		args = append(args, category)
+		paramIdx++
 	}
 	if query != "" {
 		q := "%" + strings.ToLower(query) + "%"
-		conditions = append(conditions,
-			"(LOWER(name) LIKE ? OR LOWER(subcategory) LIKE ? OR LOWER(address) LIKE ? OR LOWER(description) LIKE ?)")
+		conditions = append(conditions, fmt.Sprintf(
+			"(LOWER(name) LIKE $%d OR LOWER(subcategory) LIKE $%d OR LOWER(address) LIKE $%d OR LOWER(description) LIKE $%d)",
+			paramIdx, paramIdx+1, paramIdx+2, paramIdx+3,
+		))
 		args = append(args, q, q, q, q)
 	}
 
@@ -101,9 +103,21 @@ func (s *POIService) searchLocal(query, category string) ([]*models.POI, error) 
 func (s *POIService) cacheAll(pois []*models.POI) {
 	for _, p := range pois {
 		if _, err := s.db.Exec(
-			`INSERT OR REPLACE INTO points_of_interest
+			`INSERT INTO points_of_interest
 			 (id, name, category, subcategory, address, rating, review_count, description, image_url, lat, lng, price_level)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			 ON CONFLICT (id) DO UPDATE SET
+			   name = EXCLUDED.name,
+			   category = EXCLUDED.category,
+			   subcategory = EXCLUDED.subcategory,
+			   address = EXCLUDED.address,
+			   rating = EXCLUDED.rating,
+			   review_count = EXCLUDED.review_count,
+			   description = EXCLUDED.description,
+			   image_url = EXCLUDED.image_url,
+			   lat = EXCLUDED.lat,
+			   lng = EXCLUDED.lng,
+			   price_level = EXCLUDED.price_level`,
 			p.ID, p.Name, p.Category, p.Subcategory, p.Address,
 			p.Rating, p.ReviewCount, p.Description, p.ImageURL, p.Lat, p.Lng, p.PriceLevel,
 		); err != nil {
