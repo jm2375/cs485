@@ -127,6 +127,7 @@ func insertInvitation(t *testing.T, db *sql.DB, tripID, inviterID, email, tokenH
 
 // ── 1. NewInvitationService ───────────────────────────────────────────────────
 
+// 1.1 — All dependency fields are set correctly on the returned service.
 func TestNewInvitationService_WiresAllFields(t *testing.T) {
 	db := func() *sql.DB {
 		dsn := fmt.Sprintf("file:wire%d?mode=memory&cache=shared", time.Now().UnixNano())
@@ -163,6 +164,7 @@ func TestNewInvitationService_WiresAllFields(t *testing.T) {
 
 // ── 2. GetTripInfo ────────────────────────────────────────────────────────────
 
+// 2.1 — Returns name and destination for a trip that exists in the database.
 func TestGetTripInfo_KnownTrip(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -181,6 +183,7 @@ func TestGetTripInfo_KnownTrip(t *testing.T) {
 	}
 }
 
+// 2.2 — Returns sql.ErrNoRows for a trip ID not in the database.
 func TestGetTripInfo_NotFound(t *testing.T) {
 	b := newTestBundle(t)
 
@@ -193,6 +196,7 @@ func TestGetTripInfo_NotFound(t *testing.T) {
 
 // ── 3. SendEmailInvite ────────────────────────────────────────────────────────
 
+// 3.1 — Creates a PENDING invitation, sends one email, and persists the row.
 func TestSendEmailInvite_HappyPath(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Trip Owner")
@@ -225,6 +229,7 @@ func TestSendEmailInvite_HappyPath(t *testing.T) {
 	}
 }
 
+// 3.2 — Returns ErrInviteAlreadySent when a PENDING invite already exists for the same email/trip.
 func TestSendEmailInvite_AlreadySent(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -241,6 +246,7 @@ func TestSendEmailInvite_AlreadySent(t *testing.T) {
 	}
 }
 
+// 3.3 — Returns ErrInviteRateLimited when the per-trip hourly limit (20) is exceeded.
 func TestSendEmailInvite_TripRateLimit(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -257,6 +263,7 @@ func TestSendEmailInvite_TripRateLimit(t *testing.T) {
 	}
 }
 
+// 3.4 — Returns ErrInviteRateLimited when the per-user daily limit (50) is exceeded.
 func TestSendEmailInvite_UserRateLimit(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -273,6 +280,7 @@ func TestSendEmailInvite_UserRateLimit(t *testing.T) {
 	}
 }
 
+// 3.5 — Invitation is created and returned even when the email service errors.
 func TestSendEmailInvite_EmailFailureDoesNotBlockCreation(t *testing.T) {
 	b := newTestBundle(t)
 	b.email.err = errors.New("SMTP down")
@@ -289,6 +297,7 @@ func TestSendEmailInvite_EmailFailureDoesNotBlockCreation(t *testing.T) {
 	}
 }
 
+// 3.6 — Invite link sent to recipient starts with the configured frontendURL.
 func TestSendEmailInvite_InviteLinkUsesRawToken(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -306,6 +315,7 @@ func TestSendEmailInvite_InviteLinkUsesRawToken(t *testing.T) {
 	}
 }
 
+// 3.7 — Token stored in the DB is the SHA-256 hash; the raw token is never persisted.
 func TestSendEmailInvite_StoresHashNotRawToken(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -333,6 +343,7 @@ func TestSendEmailInvite_StoresHashNotRawToken(t *testing.T) {
 
 // ── 4. ValidateToken ──────────────────────────────────────────────────────────
 
+// 4.1 — Returns the invitation for a valid, non-expired PENDING token.
 func TestValidateToken_ValidPendingToken(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -351,6 +362,7 @@ func TestValidateToken_ValidPendingToken(t *testing.T) {
 	}
 }
 
+// 4.2 — Returns ErrInviteNotFound for a token with no matching DB record.
 func TestValidateToken_UnknownToken(t *testing.T) {
 	b := newTestBundle(t)
 
@@ -361,6 +373,7 @@ func TestValidateToken_UnknownToken(t *testing.T) {
 	}
 }
 
+// 4.3 — Returns ErrInviteExpiredOrUsed for a PENDING token past its expiry.
 func TestValidateToken_ExpiredToken(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -375,6 +388,7 @@ func TestValidateToken_ExpiredToken(t *testing.T) {
 	}
 }
 
+// 4.4 — Returns ErrInviteExpiredOrUsed when the invitation is already ACCEPTED.
 func TestValidateToken_AcceptedToken(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -389,6 +403,7 @@ func TestValidateToken_AcceptedToken(t *testing.T) {
 	}
 }
 
+// 4.5 — Returns ErrInviteExpiredOrUsed for a REVOKED token.
 func TestValidateToken_RevokedToken(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -405,6 +420,7 @@ func TestValidateToken_RevokedToken(t *testing.T) {
 
 // ── 5. AcceptInvitation ───────────────────────────────────────────────────────
 
+// 5.1 — Creates a collaborator, marks invitation ACCEPTED, broadcasts WS event, and clears the cache key.
 func TestAcceptInvitation_HappyPath(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -445,6 +461,7 @@ func TestAcceptInvitation_HappyPath(t *testing.T) {
 	}
 }
 
+// 5.2 — Returns ErrInviteNotFound for an unrecognised token.
 func TestAcceptInvitation_TokenNotFound(t *testing.T) {
 	b := newTestBundle(t)
 
@@ -455,6 +472,7 @@ func TestAcceptInvitation_TokenNotFound(t *testing.T) {
 	}
 }
 
+// 5.3 — Returns ErrInviteExpiredOrUsed for a token whose invitation is past its expiry.
 func TestAcceptInvitation_ExpiredToken(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -469,6 +487,7 @@ func TestAcceptInvitation_ExpiredToken(t *testing.T) {
 	}
 }
 
+// 5.4 — Returns ErrInviteExpiredOrUsed when the invitation is already ACCEPTED.
 func TestAcceptInvitation_AlreadyAccepted(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -483,6 +502,7 @@ func TestAcceptInvitation_AlreadyAccepted(t *testing.T) {
 	}
 }
 
+// 5.5 — A duplicate accept attempt does not insert a second collaborator row.
 func TestAcceptInvitation_NoDuplicateCollaboratorOnConflict(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -505,6 +525,7 @@ func TestAcceptInvitation_NoDuplicateCollaboratorOnConflict(t *testing.T) {
 	}
 }
 
+// 5.6 — Transaction rolls back and invitation stays PENDING when the collaborator insert fails.
 func TestAcceptInvitation_RollbackOnFKViolation(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -526,6 +547,7 @@ func TestAcceptInvitation_RollbackOnFKViolation(t *testing.T) {
 	}
 }
 
+// 5.7 — The collaborator's role matches the role stored on the invitation.
 func TestAcceptInvitation_RoleMatchesInvitation(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -551,6 +573,7 @@ func TestAcceptInvitation_RoleMatchesInvitation(t *testing.T) {
 
 // ── 6. RevokeInvitation ───────────────────────────────────────────────────────
 
+// 6.1 — Trip OWNER can revoke a PENDING invitation; status becomes REVOKED and cache key is deleted.
 func TestRevokeInvitation_OwnerCanRevoke(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -575,6 +598,7 @@ func TestRevokeInvitation_OwnerCanRevoke(t *testing.T) {
 	}
 }
 
+// 6.2 — Trip EDITOR can revoke a PENDING invitation.
 func TestRevokeInvitation_EditorCanRevoke(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -594,6 +618,7 @@ func TestRevokeInvitation_EditorCanRevoke(t *testing.T) {
 	}
 }
 
+// 6.3 — Returns ErrNotOwner and leaves status unchanged when requester is a VIEWER.
 func TestRevokeInvitation_ViewerForbidden(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -615,6 +640,7 @@ func TestRevokeInvitation_ViewerForbidden(t *testing.T) {
 	}
 }
 
+// 6.4 — Returns ErrNotOwner when requester is not a collaborator on the trip at all.
 func TestRevokeInvitation_NonCollaboratorForbidden(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -630,6 +656,7 @@ func TestRevokeInvitation_NonCollaboratorForbidden(t *testing.T) {
 	}
 }
 
+// 6.5 — Returns an error containing "no longer pending" for a non-PENDING invitation.
 func TestRevokeInvitation_AlreadyAcceptedReturnsError(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -648,6 +675,7 @@ func TestRevokeInvitation_AlreadyAcceptedReturnsError(t *testing.T) {
 	}
 }
 
+// 6.6 — Returns ErrInviteNotFound for a non-existent invitation ID.
 func TestRevokeInvitation_NotFound(t *testing.T) {
 	b := newTestBundle(t)
 
@@ -660,6 +688,7 @@ func TestRevokeInvitation_NotFound(t *testing.T) {
 
 // ── 7. ListInvitations ────────────────────────────────────────────────────────
 
+// 7.1 — Returns all invitations regardless of status when no filter is supplied.
 func TestListInvitations_ReturnsAllStatuses(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -678,6 +707,7 @@ func TestListInvitations_ReturnsAllStatuses(t *testing.T) {
 	}
 }
 
+// 7.2 — Returns only PENDING invitations when filtered by status.
 func TestListInvitations_FilterByPendingStatus(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -699,6 +729,7 @@ func TestListInvitations_FilterByPendingStatus(t *testing.T) {
 	}
 }
 
+// 7.3 — Returns an empty slice for a trip with no invitations.
 func TestListInvitations_EmptyTrip(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -714,6 +745,7 @@ func TestListInvitations_EmptyTrip(t *testing.T) {
 	}
 }
 
+// 7.4 — Returns an error when the database query fails.
 func TestListInvitations_DBError(t *testing.T) {
 	b := newTestBundle(t)
 	b.db.Close()
@@ -727,6 +759,7 @@ func TestListInvitations_DBError(t *testing.T) {
 
 // ── 8. checkRateLimit ─────────────────────────────────────────────────────────
 
+// 8.1 — Allows the first invite with no prior cache entries.
 func TestCheckRateLimit_FirstInviteAllowed(t *testing.T) {
 	b := newTestBundle(t)
 
@@ -737,6 +770,7 @@ func TestCheckRateLimit_FirstInviteAllowed(t *testing.T) {
 	}
 }
 
+// 8.2 — Returns ErrInviteRateLimited when the trip counter reaches 21 within one hour.
 func TestCheckRateLimit_TripLimitBlocks(t *testing.T) {
 	b := newTestBundle(t)
 	tripKey := fmt.Sprintf("ratelimit:trip:%s:%s", "trip1", "user1")
@@ -751,6 +785,7 @@ func TestCheckRateLimit_TripLimitBlocks(t *testing.T) {
 	}
 }
 
+// 8.3 — Returns ErrInviteRateLimited when the user counter reaches 51 within 24 hours.
 func TestCheckRateLimit_UserLimitBlocks(t *testing.T) {
 	b := newTestBundle(t)
 	userKey := fmt.Sprintf("ratelimit:user:%s", "user1")
@@ -767,6 +802,7 @@ func TestCheckRateLimit_UserLimitBlocks(t *testing.T) {
 
 // ── 9. generateToken ──────────────────────────────────────────────────────────
 
+// 9.1a — Returns a non-empty string with no error.
 func TestGenerateToken_NonEmpty(t *testing.T) {
 	token, err := generateToken()
 
@@ -778,6 +814,7 @@ func TestGenerateToken_NonEmpty(t *testing.T) {
 	}
 }
 
+// 9.1b — Output contains only URL-safe Base64 characters.
 func TestGenerateToken_URLSafeBase64Alphabet(t *testing.T) {
 	token, err := generateToken()
 	if err != nil {
@@ -793,6 +830,7 @@ func TestGenerateToken_URLSafeBase64Alphabet(t *testing.T) {
 	}
 }
 
+// 9.2 — Two successive calls return different tokens.
 func TestGenerateToken_UniqueOnSuccessiveCalls(t *testing.T) {
 	t1, err1 := generateToken()
 	t2, err2 := generateToken()
@@ -805,6 +843,7 @@ func TestGenerateToken_UniqueOnSuccessiveCalls(t *testing.T) {
 	}
 }
 
+// 9.3 — Encoded output is exactly 44 characters (Base64 of 32 random bytes).
 func TestGenerateToken_Length44(t *testing.T) {
 	token, err := generateToken()
 	if err != nil {
@@ -817,6 +856,7 @@ func TestGenerateToken_Length44(t *testing.T) {
 
 // ── 10. hashToken ─────────────────────────────────────────────────────────────
 
+// 10.1 — Produces the correct lowercase hex-encoded SHA-256 digest for a known input.
 func TestHashToken_KnownSHA256Value(t *testing.T) {
 	// echo -n "hello" | sha256sum
 	want := "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
@@ -826,6 +866,7 @@ func TestHashToken_KnownSHA256Value(t *testing.T) {
 	}
 }
 
+// 10.2 — Same input always yields the same output.
 func TestHashToken_Deterministic(t *testing.T) {
 	h1 := hashToken("repeatme")
 	h2 := hashToken("repeatme")
@@ -834,6 +875,7 @@ func TestHashToken_Deterministic(t *testing.T) {
 	}
 }
 
+// 10.3 — Different inputs produce different hashes.
 func TestHashToken_DifferentInputsDifferentOutputs(t *testing.T) {
 	if hashToken("tokenA") == hashToken("tokenB") {
 		t.Error("different inputs produced the same hash")
@@ -842,6 +884,7 @@ func TestHashToken_DifferentInputsDifferentOutputs(t *testing.T) {
 
 // ── 11. scanInvitation ────────────────────────────────────────────────────────
 
+// 11.1 — All nine columns are mapped to the correct Invitation fields, including parsed time and enum types.
 func TestScanInvitation_MapsAllFieldsCorrectly(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -872,6 +915,7 @@ func TestScanInvitation_MapsAllFieldsCorrectly(t *testing.T) {
 	}
 }
 
+// 11.2 — Returns nil and the scanner's error when Scan fails.
 func TestScanInvitation_PropagatesScanError(t *testing.T) {
 	row := &errScanner{err: sql.ErrNoRows}
 
@@ -887,6 +931,7 @@ func TestScanInvitation_PropagatesScanError(t *testing.T) {
 
 // ── 12. getByID ───────────────────────────────────────────────────────────────
 
+// 12.1 — Returns the invitation whose ID matches the query.
 func TestGetByID_KnownID(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -903,6 +948,7 @@ func TestGetByID_KnownID(t *testing.T) {
 	}
 }
 
+// 12.2 — Returns a non-nil error for an ID not in the database.
 func TestGetByID_UnknownID(t *testing.T) {
 	b := newTestBundle(t)
 
@@ -918,6 +964,7 @@ func TestGetByID_UnknownID(t *testing.T) {
 
 // ── 13. getByTokenHash ────────────────────────────────────────────────────────
 
+// 13.1 — Returns the invitation whose token_hash column matches the supplied hash.
 func TestGetByTokenHash_MatchingHash(t *testing.T) {
 	b := newTestBundle(t)
 	ownerID := insertUser(t, b.db, "owner@example.com", "Owner")
@@ -935,6 +982,7 @@ func TestGetByTokenHash_MatchingHash(t *testing.T) {
 	}
 }
 
+// 13.2 — Returns a non-nil error when no row matches the hash.
 func TestGetByTokenHash_NoMatch(t *testing.T) {
 	b := newTestBundle(t)
 
