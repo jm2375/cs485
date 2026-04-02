@@ -35,7 +35,7 @@ interface CardProps {
   isDragging?: boolean;
 }
 
-function ItineraryCard({ item, index, onRemove, overlay, isDragging }: CardProps) {
+export function ItineraryCard({ item, index, onRemove, overlay, isDragging }: CardProps) {
   return (
     <div
       className={`flex items-start gap-3 px-3 py-3 transition-all ${
@@ -144,7 +144,7 @@ function SortableItem({
 
 // ─── Day delete confirmation ──────────────────────────────────────────────────
 
-function DeleteDayConfirm({
+export function DeleteDayConfirm({
   day,
   count,
   onConfirm,
@@ -266,8 +266,11 @@ export function ItineraryPanel({
       setItems(itinerary);
       return;
     }
-    // Commit whatever the live preview settled on
-    onReorder(items);
+    // Commit whatever the live preview settled on (functional update sees latest items from handleDragOver)
+    setItems(prev => {
+      onReorder(prev);
+      return prev;
+    });
   }
 
   // ── Empty state ────────────────────────────────────────────────────────────
