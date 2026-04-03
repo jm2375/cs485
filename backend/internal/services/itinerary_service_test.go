@@ -21,7 +21,7 @@ type itineraryBundle struct {
 
 func newItineraryBundle(t *testing.T) *itineraryBundle {
 	t.Helper()
-	dsn := fmt.Sprintf("file:itntest%d?mode=memory&cache=shared&_foreign_keys=on", time.Now().UnixNano())
+	dsn := fmt.Sprintf("file:itntest%d?mode=memory&cache=shared&_pragma=foreign_keys(1)", time.Now().UnixNano())
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
