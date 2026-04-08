@@ -717,6 +717,41 @@ func TestUpdateRoleRequiresOwner(t *testing.T) {
 	mustStatus(t, w, http.StatusForbidden)
 }
 
+// TP-003: UpdateRole for a non-collaborator must return 404, not 400.
+// Oracle: PATCH /api/trips/:tripId/collaborators/:userId where :userId is not a
+// member of the trip → HTTP 404 Not Found.
+// Current (buggy) behaviour: the handler falls through to the default case in
+// the error switch and returns 400 Bad Request because ErrCollaboratorNotFound
+// is not handled for UpdateRole (collaborator_handler.go:70-78).
+func TestUpdateRoleNonCollaboratorReturns404(t *testing.T) {
+	ts := newTestServer(t)
+
+	// Register a brand-new user who has never joined the trip.
+	w := ts.doAs(t, http.MethodPost, "/api/auth/register", map[string]string{
+		"email":       "outsider@test.com",
+		"displayName": "Outsider",
+		"password":    "secret123",
+	}, "")
+	mustStatus(t, w, http.StatusCreated)
+	outsiderBody := asJSON(t, w)
+	userObj, ok := outsiderBody["user"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("register: missing user object in response: %v", outsiderBody)
+	}
+	outsiderID, ok := userObj["id"].(string)
+	if !ok || outsiderID == "" {
+		t.Fatal("register: missing user.id in response")
+	}
+
+	// Owner attempts to update the role of a user who is not a collaborator.
+	// Oracle: must be 404 Not Found.
+	w2 := ts.do(t, http.MethodPatch,
+		fmt.Sprintf("/api/trips/%s/collaborators/%s", ts.tripID, outsiderID),
+		map[string]string{"role": "Editor"},
+	)
+	mustStatus(t, w2, http.StatusNotFound)
+}
+
 func TestRemoveCollaborator(t *testing.T) {
 	ts := newTestServer(t)
 	var viewerID string
