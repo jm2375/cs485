@@ -3,13 +3,14 @@ package config
 import "os"
 
 type Config struct {
-	Port         string
-	DatabaseURL  string // postgres://user:pass@host/db?sslmode=disable
-	JWTSecret    string
-	FrontendURL  string
-	SeedData     bool
-	GoogleAPIKey string
-	StaticDir    string // path to React build output; empty = dev mode (no static serving)
+	Port           string
+	DatabaseURL    string // postgres://user:pass@host/db?sslmode=disable
+	JWTSecret      string
+	FrontendURL    string
+	SeedData       bool
+	GoogleAPIKey   string
+	StaticDir      string // path to React build output; empty = dev mode (no static serving)
+	SendGridAPIKey string
 }
 
 func Load() *Config {
@@ -19,8 +20,9 @@ func Load() *Config {
 		JWTSecret:    getEnv("JWT_SECRET", "dev-secret-change-in-production"),
 		FrontendURL:  getEnv("FRONTEND_URL", "http://localhost:5173"),
 		SeedData:     getEnvBool("SEED_DATA", true),
-		GoogleAPIKey: getEnv("API_KEY", ""),
-		StaticDir:    getEnv("STATIC_DIR", ""),
+		GoogleAPIKey:   getEnv("API_KEY", ""),
+		StaticDir:      getEnv("STATIC_DIR", ""),
+		SendGridAPIKey: getEnv("SENDGRID_API_KEY", ""),
 	}
 }
 

@@ -1,0 +1,17 @@
+# Secrets
+.env
+backend/.env
+
+# macOS
+.DS_Store
+
+# Frontend build output
+frontend/dist/
+frontend/node_modules/
+
+# Go build artifacts
+backend/server
+backend/tripplanner.db
+
+# Archives
+*.zip

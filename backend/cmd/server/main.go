@@ -49,7 +49,7 @@ func main() {
 
 	// ── Services ──────────────────────────────────────────────────────────────
 	authSvc := services.NewAuthService(database, cfg.JWTSecret)
-	emailSvc := services.NewMockEmailService()
+	emailSvc := services.NewSendGridEmailService(cfg.SendGridAPIKey)
 
 	var googleClient *services.GooglePlacesClient
 	if cfg.GoogleAPIKey != "" {

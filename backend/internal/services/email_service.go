@@ -2,29 +2,50 @@ package services
 
 import (
 	"fmt"
-	"log"
+
+	"github.com/sendgrid/sendgrid-go"
+	"github.com/sendgrid/sendgrid-go/helpers/mail"
 )
 
 // IEmailService is the interface for sending transactional emails.
-// The real SendGrid implementation is swapped in for P5.
 type IEmailService interface {
 	SendInviteEmail(to, inviterName, tripName, inviteLink string) error
 }
 
-// MockEmailService logs email sends to stdout instead of making network calls.
-// It satisfies IEmailService for P4.
-type MockEmailService struct{}
+// SendGridEmailService sends transactional emails via the SendGrid API.
+type SendGridEmailService struct {
+	apiKey     string
+	fromEmail  string
+}
 
-func NewMockEmailService() *MockEmailService { return &MockEmailService{} }
+func NewSendGridEmailService(apiKey string) *SendGridEmailService {
+	return &SendGridEmailService{
+		apiKey:    apiKey,
+		fromEmail: "at859@njit.edu",
+	}
+}
 
-func (m *MockEmailService) SendInviteEmail(to, inviterName, tripName, inviteLink string) error {
-	log.Println("─────────────────────────────────────────────")
-	log.Printf("[email] TO:      %s", to)
-	log.Printf("[email] FROM:    %s (via TripPlanner)", inviterName)
-	log.Printf("[email] SUBJECT: You've been invited to join \"%s\"", tripName)
-	log.Printf("[email] BODY:    %s has invited you to collaborate on \"%s\".", inviterName, tripName)
-	log.Printf("[email]          Accept your invitation: %s", inviteLink)
-	log.Println("─────────────────────────────────────────────")
-	fmt.Printf("\n[MockEmail] Invite sent to %s — link: %s\n\n", to, inviteLink)
+func (s *SendGridEmailService) SendInviteEmail(to, inviterName, tripName, inviteLink string) error {
+	from := mail.NewEmail(fmt.Sprintf("%s (via TripPlanner)", inviterName), s.fromEmail)
+	toAddr := mail.NewEmail("", to)
+	subject := fmt.Sprintf("You've been invited to join \"%s\"", tripName)
+	plainText := fmt.Sprintf(
+		"%s has invited you to collaborate on \"%s\".\nAccept your invitation: %s",
+		inviterName, tripName, inviteLink,
+	)
+	htmlContent := fmt.Sprintf(
+		`<p>%s has invited you to collaborate on <strong>"%s"</strong>.</p><p><a href="%s">Accept your invitation</a></p>`,
+		inviterName, tripName, inviteLink,
+	)
+
+	message := mail.NewSingleEmail(from, subject, toAddr, plainText, htmlContent)
+	client := sendgrid.NewSendClient(s.apiKey)
+	response, err := client.Send(message)
+	if err != nil {
+		return fmt.Errorf("sendgrid: %w", err)
+	}
+	if response.StatusCode >= 400 {
+		return fmt.Errorf("sendgrid: unexpected status %d: %s", response.StatusCode, response.Body)
+	}
 	return nil
 }
