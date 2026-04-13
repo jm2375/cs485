@@ -19,17 +19,25 @@ FROM alpine:3.19
 WORKDIR /app
 
 # ca-certificates is needed for outbound HTTPS (Google Places API)
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates && \
+    addgroup -S appgroup && adduser -S appuser -G appgroup
 
 COPY --from=backend /app/server ./server
 COPY --from=frontend /app/dist  ./dist
 
+RUN chown -R appuser:appgroup /app
+USER appuser
+
 # EB routes external traffic → port 8080 via its nginx reverse proxy
 EXPOSE 8080
 
-# DATABASE_URL and REDIS_URL must be set as environment variables at runtime
+# DATABASE_URL must be set as an environment variable at runtime
 # (EB environment properties, or docker run -e).
+# SEED_DATA defaults to false; set to true only for local dev/demo environments.
 ENV STATIC_DIR=./dist \
-    SEED_DATA=true
+    SEED_DATA=false
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://localhost:8080/health || exit 1
 
 CMD ["./server"]
