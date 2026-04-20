@@ -12,6 +12,17 @@ type IEmailService interface {
 	SendInviteEmail(to, inviterName, tripName, inviteLink string) error
 }
 
+// MockEmailService logs email sends to stdout instead of making network calls.
+// Used in tests and local development.
+type MockEmailService struct{}
+
+func NewMockEmailService() *MockEmailService { return &MockEmailService{} }
+
+func (m *MockEmailService) SendInviteEmail(to, inviterName, tripName, inviteLink string) error {
+	fmt.Printf("[MockEmail] Invite sent to %s — link: %s\n", to, inviteLink)
+	return nil
+}
+
 // SendGridEmailService sends transactional emails via the SendGrid API.
 type SendGridEmailService struct {
 	apiKey     string
