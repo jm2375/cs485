@@ -10,6 +10,8 @@ jobs:
   integration-tests:
     name: Frontend → Backend Integration
     runs-on: ubuntu-latest
+    env:
+      BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
 
     steps:
       - name: Checkout
@@ -30,8 +32,8 @@ jobs:
       # The test suite itself also skips every case when BASE_URL is empty,
       # so this check is just an early-exit to avoid printing confusing output.
       - name: Run integration tests
-        if: ${{ secrets.BACKEND_BASE_URL != '' }}
+        if: env.BACKEND_BASE_URL != ''
         working-directory: frontend
         env:
-          BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
+          BASE_URL: ${{ env.BACKEND_BASE_URL }}
         run: npm run test:integration
