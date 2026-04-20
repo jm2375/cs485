@@ -153,19 +153,19 @@ export default function App() {
       }
       case 'collaborator_left': {
         const userId = data.userId as string;
-        setTrip(prev => ({
+        setTrip(prev => prev ? ({
           ...prev,
           collaborators: prev.collaborators.filter(c => c.id !== userId),
-        }));
+        }) : null);
         break;
       }
       case 'role_updated': {
         const userId  = data.userId  as string;
         const newRole = data.newRole as Role;
-        setTrip(prev => ({
+        setTrip(prev => prev ? ({
           ...prev,
           collaborators: prev.collaborators.map(c => c.id === userId ? { ...c, role: newRole } : c),
-        }));
+        }) : null);
         break;
       }
       case 'itinerary_updated': {
@@ -286,7 +286,7 @@ export default function App() {
         const name  = local.replace(/[._-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         return { id: `pending-${Date.now()}-${i}`, name, email, role, color: nextColor() };
       });
-      setTrip(prev => ({ ...prev, collaborators: [...prev.collaborators, ...newCollabs] }));
+      setTrip(prev => prev ? ({ ...prev, collaborators: [...prev.collaborators, ...newCollabs] }) : null);
       setActiveTab('collaborators');
       pushToast(
         emails.length === 1 ? `Invite sent to ${emails[0]}` : `Invites sent to ${emails.length} people`,
@@ -300,10 +300,10 @@ export default function App() {
     if (!tripId) return;
     try {
       await api.updateCollaboratorRole(tripId, id, role);
-      setTrip(prev => ({
+      setTrip(prev => prev ? ({
         ...prev,
         collaborators: prev.collaborators.map(c => c.id === id ? { ...c, role } : c),
-      }));
+      }) : null);
     } catch (err) {
       pushToast((err as Error).message ?? 'Failed to update role', 'error');
     }
@@ -313,10 +313,10 @@ export default function App() {
     if (!tripId) return;
     try {
       await api.removeCollaborator(tripId, id);
-      setTrip(prev => ({
+      setTrip(prev => prev ? ({
         ...prev,
         collaborators: prev.collaborators.filter(c => c.id !== id),
-      }));
+      }) : null);
     } catch (err) {
       pushToast((err as Error).message ?? 'Failed to remove collaborator', 'error');
     }
