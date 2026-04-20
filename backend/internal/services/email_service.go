@@ -21,7 +21,7 @@ type SendGridEmailService struct {
 func NewSendGridEmailService(apiKey string) *SendGridEmailService {
 	return &SendGridEmailService{
 		apiKey:    apiKey,
-		fromEmail: "at859@njit.edu",
+		fromEmail: "homa130702@gmail.com",
 	}
 }
 
