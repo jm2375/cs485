@@ -17,10 +17,12 @@ const COLLAB_COLORS = [
 
 // ── Internal storage helpers ─────────────────────────────────────────────────
 
-function getToken(): string | null { return localStorage.getItem('auth_token'); }
-function setToken(t: string): void  { localStorage.setItem('auth_token', t); }
-function getTripId(): string | null { return localStorage.getItem('trip_id'); }
+function getToken(): string | null  { return localStorage.getItem('auth_token'); }
+function setToken(t: string): void   { localStorage.setItem('auth_token', t); }
+function getTripId(): string | null  { return localStorage.getItem('trip_id'); }
 function setTripId(id: string): void { localStorage.setItem('trip_id', id); }
+function getStoredUserId(): string | null { return localStorage.getItem('user_id'); }
+function setStoredUserId(id: string): void { localStorage.setItem('user_id', id); }
 
 // ── Core fetch wrapper ───────────────────────────────────────────────────────
 
@@ -44,13 +46,6 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   return res.json() as Promise<T>;
 }
 
-// ── Shape returned by /api/dev/bootstrap ────────────────────────────────────
-
-interface BootstrapResult {
-  tripId: string;
-  token:  string;
-  userId: string;
-}
 
 // Raw collaborator shape from backend (no color / avatarUrl yet)
 interface RawCollaborator {
@@ -81,46 +76,26 @@ export const api = {
   getCachedTripId(): string | null { return getTripId(); },
 
   /**
-   * Authenticates as the demo owner and returns the demo trip ID + JWT.
-   * Results are cached in localStorage so repeat calls are instant.
+   * Validates the stored token and returns the current user + tripId.
+   * If no tripId is cached locally, fetches the user's trips from the backend
+   * and restores the most recent one. Throws if unauthenticated or token expired.
    */
-  async bootstrap(): Promise<BootstrapResult> {
-    // 1. Returning Sarah Chen session — use cached bootstrap data.
-    const cached = localStorage.getItem('bootstrap_v1');
-    if (cached) {
-      const data: BootstrapResult = JSON.parse(cached);
-      setToken(data.token);
-      setTripId(data.tripId);
-      return data;
-    }
-
-    // 2. A real user is logged in — validate their token first.
+  async bootstrap(): Promise<{ token: string; tripId: string | null; userId: string }> {
     const existingToken = getToken();
-    if (existingToken) {
-      try {
-        const user = await req<{ id: string }>('GET', '/api/auth/me');
-        const existingTripId = getTripId();
-        if (existingTripId) {
-          // Real user with a known trip — use their credentials directly.
-          return { token: existingToken, tripId: existingTripId, userId: user.id };
-        }
-        // Real user but no trip yet (e.g. just logged in) — borrow the demo
-        // trip ID without touching the user's token or caching bootstrap_v1.
-        const demo = await req<BootstrapResult>('POST', '/api/dev/bootstrap');
-        setTripId(demo.tripId);
-        return { token: existingToken, tripId: demo.tripId, userId: user.id };
-      } catch {
-        // Token is expired or invalid — clear it and fall through.
-        localStorage.removeItem('auth_token');
-      }
+    if (!existingToken) {
+      throw new Error('Not authenticated');
     }
 
-    // 3. No authenticated user — bootstrap as the demo owner (Sarah Chen).
-    const data = await req<BootstrapResult>('POST', '/api/dev/bootstrap');
-    localStorage.setItem('bootstrap_v1', JSON.stringify(data));
-    setToken(data.token);
-    setTripId(data.tripId);
-    return data;
+    // Validate token — only this failure should clear the stored token.
+    let user: { id: string };
+    try {
+      user = await req<{ id: string }>('GET', '/api/auth/me');
+    } catch {
+      localStorage.removeItem('auth_token');
+      throw new Error('Session expired');
+    }
+
+    return { token: existingToken, tripId: getTripId(), userId: user.id };
   },
 
   /** Fetch the currently authenticated user's profile. */
@@ -188,6 +163,7 @@ export const api = {
   logout(): void {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('trip_id');
+    localStorage.removeItem('user_id');
     localStorage.removeItem('bootstrap_v1');
   },
 
@@ -197,8 +173,12 @@ export const api = {
       'POST', '/api/auth/login', { email, password }
     );
     localStorage.removeItem('bootstrap_v1');
-    localStorage.removeItem('trip_id');
+    // If a different user is logging in, clear the previous user's trip.
+    if (getStoredUserId() && getStoredUserId() !== data.user.id) {
+      localStorage.removeItem('trip_id');
+    }
     setToken(data.token);
+    setStoredUserId(data.user.id);
     return data;
   },
 
@@ -208,8 +188,10 @@ export const api = {
       'POST', '/api/auth/register', { email, displayName, password }
     );
     localStorage.removeItem('bootstrap_v1');
+    // New account — no trip yet; clear any leftover trip from a previous user.
     localStorage.removeItem('trip_id');
     setToken(data.token);
+    setStoredUserId(data.user.id);
     return data;
   },
 
@@ -231,6 +213,29 @@ export const api = {
   /** Join a trip via shareable link (requires auth). */
   async joinByInviteCode(inviteCode: string): Promise<void> {
     await req('POST', `/api/join/${encodeURIComponent(inviteCode)}`);
+  },
+
+  /** Update a trip's name and/or destination. */
+  async updateTrip(tripId: string, fields: { name?: string; destination?: string }): Promise<void> {
+    await req<unknown>('PATCH', `/api/trips/${tripId}`, fields);
+  },
+
+  /** Fetch all trips the current user is a member of. */
+  async listTrips(): Promise<{ id: string; name: string; destination: string }[]> {
+    const { trips } = await req<{ trips: { id: string; name: string; destination: string }[] }>('GET', '/api/trips');
+    return trips ?? [];
+  },
+
+  /** Persist a chosen trip ID to localStorage (used by the trip selector). */
+  selectTrip(id: string): void {
+    setTripId(id);
+  },
+
+  /** Create a new trip. Stores the new trip ID locally and returns it. */
+  async createTrip(name: string, destination: string): Promise<{ id: string }> {
+    const data = await req<{ id: string }>('POST', '/api/trips', { name, destination });
+    setTripId(data.id);
+    return data;
   },
 
   /**
