@@ -2,7 +2,7 @@
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
     "esModuleInterop": true,
-    "types": ["jest", "@testing-library/jest-dom", "vite/client"],
+    "types": ["jest", "@testing-library/jest-dom", "vite/client", "node"],
     "verbatimModuleSyntax": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
