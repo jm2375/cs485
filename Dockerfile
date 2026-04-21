@@ -10,9 +10,12 @@ RUN npm run build
 FROM golang:1.21-alpine AS backend
 WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd/server/
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -o server ./cmd/server/
 
 # ── Stage 3: Final image ───────────────────────────────────────────────────────
 FROM alpine:3.19

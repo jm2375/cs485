@@ -84,6 +84,89 @@ func (h *TripHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, detail)
 }
 
+// List godoc  GET /api/trips
+func (h *TripHandler) List(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+
+	rows, err := h.svc.database.Query(
+		`SELECT trip_id FROM trip_collaborators WHERE user_id = $1 ORDER BY joined_at ASC`,
+		userID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "list trips failed"})
+		return
+	}
+	defer rows.Close()
+
+	type tripSummary struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Destination string `json:"destination"`
+	}
+
+	trips := []tripSummary{}
+	for rows.Next() {
+		var tripID string
+		if err := rows.Scan(&tripID); err != nil {
+			continue
+		}
+		var name, destination string
+		if err := h.svc.database.QueryRow(
+			`SELECT name, destination FROM trips WHERE id = $1`, tripID,
+		).Scan(&name, &destination); err != nil {
+			continue
+		}
+		trips = append(trips, tripSummary{ID: tripID, Name: name, Destination: destination})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"trips": trips})
+}
+
+// Update godoc  PATCH /api/trips/:tripId
+func (h *TripHandler) Update(c *gin.Context) {
+	tripID := c.Param("tripId")
+	userID := middleware.MustGetUserID(c)
+
+	ok, _ := h.svc.collabSvc.HasPermission(tripID, userID, "admin")
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can rename a trip"})
+		return
+	}
+
+	var body struct {
+		Name        *string `json:"name"`
+		Destination *string `json:"destination"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if body.Name != nil {
+		if _, err := h.svc.database.Exec(
+			`UPDATE trips SET name = $1 WHERE id = $2`, *body.Name, tripID,
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "update failed"})
+			return
+		}
+	}
+	if body.Destination != nil {
+		if _, err := h.svc.database.Exec(
+			`UPDATE trips SET destination = $1 WHERE id = $2`, *body.Destination, tripID,
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "update failed"})
+			return
+		}
+	}
+
+	detail, err := h.buildTripDetail(tripID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, detail)
+}
+
 // Get godoc  GET /api/trips/:tripId
 func (h *TripHandler) Get(c *gin.Context) {
 	tripID := c.Param("tripId")
