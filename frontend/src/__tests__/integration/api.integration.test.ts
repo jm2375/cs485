@@ -1,6 +1,7 @@
 /**
- * @jest-environment node
  * See SPEC.md in this directory for the full endpoint specification.
+ *
+ * @jest-environment node
  */
 
 /// <reference types="node" />
