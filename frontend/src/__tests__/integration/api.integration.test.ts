@@ -183,8 +183,10 @@ describeIf('Backend Integration — all frontend-to-backend paths', () => {
       expect(status).toBe(401);
     });
 
-    test('A-04  POST /api/dev/bootstrap → 200 with token + tripId', async () => {
+    test('A-04  POST /api/dev/bootstrap → 200 with token + tripId (or 503 when seed data disabled)', async () => {
       const { status, body } = await api('POST', '/api/dev/bootstrap');
+      // 503 is the expected response in production environments where SEED_DATA=false.
+      if (status === 503) return;
       expect(status).toBe(200);
       expect(typeof (body as any).token).toBe('string');
       expect(typeof (body as any).tripId).toBe('string');

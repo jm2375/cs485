@@ -30,10 +30,27 @@ func (s *POIService) Search(query, category, near string) ([]*models.POI, error)
 			log.Printf("[poi] google places error, falling back to local: %v", err)
 		} else {
 			s.cacheAll(pois)
+			if category != "" && category != "all" {
+				pois = filterByCategory(pois, category)
+			}
 			return pois, nil
 		}
 	}
 	return s.searchLocal(query, category)
+}
+
+// filterByCategory removes POIs whose category does not match the requested one.
+// Google Places results are classified by classifyGoogleTypes which can produce
+// "attraction" as a catch-all; this post-filter enforces the contract the local
+// DB search already provides via a WHERE clause.
+func filterByCategory(pois []*models.POI, category string) []*models.POI {
+	filtered := pois[:0]
+	for _, p := range pois {
+		if p.Category == category {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered
 }
 
 // GetByID fetches a single POI by ID from the local database.
