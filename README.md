@@ -1,4 +1,4 @@
-# cs485
+# CS 485
 
 To run frontend tests:
 <ul>
