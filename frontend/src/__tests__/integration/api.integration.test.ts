@@ -3,6 +3,8 @@
  * See SPEC.md in this directory for the full endpoint specification.
  */
 
+/// <reference types="node" />
+
 const BASE_URL = (process.env.BASE_URL ?? '').replace(/\/$/, '');
 
 // All tests are skipped when BASE_URL is not provided so the normal
