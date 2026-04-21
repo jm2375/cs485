@@ -61,7 +61,7 @@ type testBundle struct {
 
 func newTestBundle(t *testing.T) *testBundle {
 	t.Helper()
-	dsn := fmt.Sprintf("file:invtest%d?mode=memory&cache=shared&_foreign_keys=on", time.Now().UnixNano())
+	dsn := fmt.Sprintf("file:invtest%d?mode=memory&cache=shared&_pragma=foreign_keys(1)", time.Now().UnixNano())
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatalf("open db: %v", err)

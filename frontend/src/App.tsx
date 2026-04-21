@@ -1,8 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Share2, Pencil, X, Check, SunMoon, LogOut } from 'lucide-react';
+import { Share2, Pencil, X, Check, SunMoon, LogOut, MapPin, ChevronRight, Plus } from 'lucide-react';
 import type { Trip, Collaborator, Role, POI, ItineraryItem, PanelTab, Toast } from './types';
-import { mockTrip, mockItinerary } from './data/mockData';
 import { MapView } from './components/MapView';
 import { RightPanel } from './components/RightPanel';
 import { InviteModal } from './components/InviteModal';
@@ -24,17 +23,24 @@ function makeToast(message: string, type: Toast['type'] = 'success'): Toast {
 }
 
 export default function App() {
-  const [trip, setTrip]                 = useState<Trip>(mockTrip);
-  const [tripId, setTripId]             = useState<string>(mockTrip.id);
-  const [itinerary, setItinerary]       = useState<ItineraryItem[]>(mockItinerary);
+  const [trip, setTrip]                 = useState<Trip | null>(null);
+  const [tripId, setTripId]             = useState<string | null>(null);
+  const [itinerary, setItinerary]       = useState<ItineraryItem[]>([]);
   const [activeTab, setActiveTab]       = useState<PanelTab>('collaborators');
   const [showInviteModal, setInvite]    = useState(false);
   const [editingName, setEditingName]   = useState(false);
-  const [nameInput, setNameInput]       = useState(trip.name);
+  const [nameInput, setNameInput]       = useState('');
   const [toasts, setToasts]             = useState<Toast[]>([]);
   const [hoveredPOI, setHoveredPOI]     = useState<POI | null>(null);
   const [highContrast, setHighContrast] = useState(() => localStorage.getItem('hc') === '1');
   const [currentUser, setCurrentUser]   = useState<{ displayName: string; email: string } | null>(null);
+  // Trip selector / create form state
+  const [myTrips, setMyTrips]                   = useState<{ id: string; name: string; destination: string }[]>([]);
+  const [showTripSelector, setShowTripSelector] = useState(false);
+  const [newTripName, setNewTripName]           = useState('');
+  const [newTripDestination, setNewTripDestination] = useState('');
+  const [creatingTrip, setCreatingTrip]         = useState(false);
+  const [showCreateForm, setShowCreateForm]     = useState(false);
   const wsRef    = useRef<WebSocket | null>(null);
   const navigate = useNavigate();
 
@@ -49,11 +55,23 @@ export default function App() {
       try {
         const { tripId: id } = await api.bootstrap();
         if (cancelled) return;
-        setTripId(id);
+
         // Fetch user info independently so it always shows even if trip load fails.
         api.getCurrentUser()
           .then(user => { if (!cancelled) setCurrentUser({ displayName: user.displayName, email: user.email }); })
           .catch(() => {});
+
+        if (!id) {
+          // No cached trip — fetch the list so the selector can show existing trips.
+          try {
+            const trips = await api.listTrips();
+            if (!cancelled) setMyTrips(trips);
+          } catch { /* show empty selector */ }
+          setShowTripSelector(true);
+          return;
+        }
+
+        setTripId(id);
 
         const [tripData, itineraryData] = await Promise.all([
           api.getTrip(id),
@@ -95,8 +113,9 @@ export default function App() {
         }
 
         connectWS(id);
-      } catch (err) {
-        console.warn('[App] backend not reachable — using mock data', err);
+      } catch {
+        // Not authenticated — the ProtectedRoute will redirect to /login.
+        navigate('/login');
       }
     }
     init();
@@ -116,39 +135,37 @@ export default function App() {
     switch (event) {
       case 'presence_update': {
         const online = (data.onlineUserIds as string[]) ?? [];
-        setTrip(prev => ({
+        setTrip(prev => prev ? ({
           ...prev,
           collaborators: prev.collaborators.map(c => ({
             ...c,
             // isOnline is not in the Collaborator type but harmless to spread
           })),
-        }));
+        }) : prev);
         // Re-fetch collaborators so online badges refresh
-        api.getTrip(tripId)
-          .then(t => setTrip(t))
-          .catch(() => {});
+        if (tripId) api.getTrip(tripId).then(t => setTrip(t)).catch(() => {});
         void online; // used via re-fetch above
         break;
       }
       case 'collaborator_joined': {
-        api.getTrip(tripId).then(t => setTrip(t)).catch(() => {});
+        if (tripId) api.getTrip(tripId).then(t => setTrip(t)).catch(() => {});
         break;
       }
       case 'collaborator_left': {
         const userId = data.userId as string;
-        setTrip(prev => ({
+        setTrip(prev => prev ? ({
           ...prev,
           collaborators: prev.collaborators.filter(c => c.id !== userId),
-        }));
+        }) : null);
         break;
       }
       case 'role_updated': {
         const userId  = data.userId  as string;
         const newRole = data.newRole as Role;
-        setTrip(prev => ({
+        setTrip(prev => prev ? ({
           ...prev,
           collaborators: prev.collaborators.map(c => c.id === userId ? { ...c, role: newRole } : c),
-        }));
+        }) : null);
         break;
       }
       case 'itinerary_updated': {
@@ -184,21 +201,83 @@ export default function App() {
     navigate('/login');
   }
 
+  // ── Trip selector ─────────────────────────────────────────────────────────
+  async function handleOpenTripSelector() {
+    wsRef.current?.close();
+    setTrip(null);
+    setTripId(null);
+    setItinerary([]);
+    setNewTripName('');
+    setNewTripDestination('');
+    setShowCreateForm(false);
+    try {
+      const trips = await api.listTrips();
+      setMyTrips(trips);
+    } catch { /* keep stale list */ }
+    setShowTripSelector(true);
+  }
+
+  async function handleSelectTrip(id: string) {
+    api.selectTrip(id);
+    setTripId(id);
+    setShowTripSelector(false);
+    const [tripData, itineraryData] = await Promise.all([
+      api.getTrip(id),
+      api.getItinerary(id),
+    ]);
+    setTrip(tripData);
+    setItinerary(itineraryData);
+    setNameInput(tripData.name);
+  }
+
+  // ── Create trip ───────────────────────────────────────────────────────────
+  async function handleCreateTrip(e: React.FormEvent) {
+    e.preventDefault();
+    const name = newTripName.trim();
+    const destination = newTripDestination.trim();
+    if (!name || !destination) return;
+    setCreatingTrip(true);
+    try {
+      const { id } = await api.createTrip(name, destination);
+      setShowTripSelector(false);
+      setTripId(id);
+      const [tripData, itineraryData] = await Promise.all([
+        api.getTrip(id),
+        api.getItinerary(id),
+      ]);
+      setTrip(tripData);
+      setItinerary(itineraryData);
+      setNameInput(tripData.name);
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to create trip', 'error');
+    } finally {
+      setCreatingTrip(false);
+    }
+  }
+
   // ── Trip name ─────────────────────────────────────────────────────────────
-  function saveName() {
+  async function saveName() {
     const trimmed = nameInput.trim();
-    if (trimmed && trimmed !== trip.name) {
-      setTrip(prev => ({ ...prev, name: trimmed }));
+    if (trimmed && trip && trimmed !== trip.name) {
+      setTrip(prev => prev ? { ...prev, name: trimmed } : prev);
+      try {
+        await api.updateTrip(tripId!, { name: trimmed });
+      } catch (err) {
+        // Revert optimistic update on failure
+        setTrip(prev => prev ? { ...prev, name: trip.name } : prev);
+        pushToast((err as Error).message ?? 'Failed to save trip name', 'error');
+      }
     }
     setEditingName(false);
   }
   function cancelNameEdit() {
-    setNameInput(trip.name);
+    setNameInput(trip?.name ?? '');
     setEditingName(false);
   }
 
   // ── Collaborators ─────────────────────────────────────────────────────────
   const handleSendInvites = useCallback(async (emails: string[], role: Extract<Role, 'Editor' | 'Viewer'>) => {
+    if (!tripId) return;
     try {
       await api.sendInvites(tripId, emails, role);
       // Optimistically add placeholders until the WS collaborator_joined arrives.
@@ -207,7 +286,7 @@ export default function App() {
         const name  = local.replace(/[._-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         return { id: `pending-${Date.now()}-${i}`, name, email, role, color: nextColor() };
       });
-      setTrip(prev => ({ ...prev, collaborators: [...prev.collaborators, ...newCollabs] }));
+      setTrip(prev => prev ? ({ ...prev, collaborators: [...prev.collaborators, ...newCollabs] }) : null);
       setActiveTab('collaborators');
       pushToast(
         emails.length === 1 ? `Invite sent to ${emails[0]}` : `Invites sent to ${emails.length} people`,
@@ -218,24 +297,26 @@ export default function App() {
   }, [tripId, pushToast]);
 
   const handleUpdateRole = useCallback(async (id: string, role: Role) => {
+    if (!tripId) return;
     try {
       await api.updateCollaboratorRole(tripId, id, role);
-      setTrip(prev => ({
+      setTrip(prev => prev ? ({
         ...prev,
         collaborators: prev.collaborators.map(c => c.id === id ? { ...c, role } : c),
-      }));
+      }) : null);
     } catch (err) {
       pushToast((err as Error).message ?? 'Failed to update role', 'error');
     }
   }, [tripId, pushToast]);
 
   const handleRemoveCollaborator = useCallback(async (id: string) => {
+    if (!tripId) return;
     try {
       await api.removeCollaborator(tripId, id);
-      setTrip(prev => ({
+      setTrip(prev => prev ? ({
         ...prev,
         collaborators: prev.collaborators.filter(c => c.id !== id),
-      }));
+      }) : null);
     } catch (err) {
       pushToast((err as Error).message ?? 'Failed to remove collaborator', 'error');
     }
@@ -243,6 +324,7 @@ export default function App() {
 
   // ── Itinerary ─────────────────────────────────────────────────────────────
   const handleAddPOI = useCallback(async (poi: POI, day: number) => {
+    if (!tripId) return;
     try {
       const item = await api.addToItinerary(tripId, poi.id, day);
       // The WS itinerary_updated event also arrives; de-dup by ID in the handler.
@@ -259,6 +341,7 @@ export default function App() {
   }, [tripId, pushToast]);
 
   const handleRemoveItem = useCallback(async (id: string) => {
+    if (!tripId) return;
     try {
       await api.removeFromItinerary(tripId, id);
       setItinerary(prev => prev.filter(i => i.id !== id));
@@ -281,6 +364,134 @@ export default function App() {
   }, [pushToast]);
 
   // ── Render ────────────────────────────────────────────────────────────────
+
+  // ── Trip selector / Create trip screen ───────────────────────────────────
+  if (showTripSelector) {
+    const hasTrips = myTrips.length > 0;
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
+
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-blue-50 rounded-xl">
+              <MapPin className="w-6 h-6 text-blue-600" aria-hidden="true" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">
+                {hasTrips ? 'Your trips' : 'Create your first trip'}
+              </h1>
+              {currentUser && (
+                <p className="text-sm text-gray-500">{currentUser.displayName}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Existing trips list */}
+          {hasTrips && !showCreateForm && (
+            <ul className="space-y-2 mb-4">
+              {myTrips.map(t => (
+                <li key={t.id}>
+                  <button
+                    onClick={() => handleSelectTrip(t.id)}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left group"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 group-hover:text-blue-700">{t.name}</p>
+                      <p className="text-xs text-gray-400">{t.destination}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-500 flex-shrink-0" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Create new trip button (when trips exist and form is hidden) */}
+          {hasTrips && !showCreateForm && (
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 border-2 border-dashed border-gray-300 text-gray-500 rounded-xl text-sm font-medium hover:border-blue-400 hover:text-blue-600 transition-colors mb-4"
+            >
+              <Plus className="w-4 h-4" />
+              New trip
+            </button>
+          )}
+
+          {/* Create trip form */}
+          {(!hasTrips || showCreateForm) && (
+            <form onSubmit={handleCreateTrip} className="space-y-4 mb-4">
+              <div>
+                <label htmlFor="trip-name" className="block text-sm font-medium text-gray-700 mb-1">
+                  Trip name
+                </label>
+                <input
+                  id="trip-name"
+                  type="text"
+                  value={newTripName}
+                  onChange={e => setNewTripName(e.target.value)}
+                  placeholder="e.g. Tokyo Adventure"
+                  required
+                  autoFocus
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label htmlFor="trip-destination" className="block text-sm font-medium text-gray-700 mb-1">
+                  Destination
+                </label>
+                <input
+                  id="trip-destination"
+                  type="text"
+                  value={newTripDestination}
+                  onChange={e => setNewTripDestination(e.target.value)}
+                  placeholder="e.g. Tokyo, Japan"
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="flex gap-2">
+                {showCreateForm && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateForm(false)}
+                    className="flex-1 py-2.5 px-4 border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={creatingTrip || !newTripName.trim() || !newTripDestination.trim()}
+                  className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {creatingTrip ? 'Creating…' : 'Create trip'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          <button
+            onClick={() => { api.logout(); navigate('/login'); }}
+            className="w-full text-center text-sm text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            Log out
+          </button>
+        </div>
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </div>
+    );
+  }
+
+  // Trip is loading (tripId was set but trip data not yet fetched).
+  if (!trip) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500 text-sm">Loading trip…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 overflow-hidden" data-hc={highContrast ? 'true' : undefined}>
 
@@ -364,6 +575,14 @@ export default function App() {
                 {currentUser.displayName}
               </span>
             )}
+            <button
+              onClick={handleOpenTripSelector}
+              className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              aria-label="My trips"
+              title="My trips"
+            >
+              <MapPin className="w-4 h-4" aria-hidden="true" />
+            </button>
             <button
               onClick={handleLogout}
               className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"

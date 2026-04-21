@@ -49,7 +49,7 @@ func main() {
 
 	// ── Services ──────────────────────────────────────────────────────────────
 	authSvc := services.NewAuthService(database, cfg.JWTSecret)
-	emailSvc := services.NewMockEmailService()
+	emailSvc := services.NewSendGridEmailService(cfg.SendGridAPIKey)
 
 	var googleClient *services.GooglePlacesClient
 	if cfg.GoogleAPIKey != "" {
@@ -109,8 +109,10 @@ func main() {
 		api.GET("/auth/me", authHandler.Me)
 
 		// Trips
+		api.GET("/trips", tripHandler.List)
 		api.POST("/trips", tripHandler.Create)
 		api.GET("/trips/:tripId", tripHandler.Get)
+		api.PATCH("/trips/:tripId", tripHandler.Update)
 		api.GET("/trips/:tripId/share-link", tripHandler.GetShareLink)
 		api.POST("/trips/:tripId/share-link/regenerate", tripHandler.RegenerateShareLink)
 

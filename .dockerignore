@@ -5,3 +5,4 @@ backend/.env
 **/*.db-wal
 **/*.db-shm
 .git
+backend/server

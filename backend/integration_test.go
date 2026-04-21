@@ -44,7 +44,7 @@ func newTestServer(t *testing.T) *testServer {
 
 	// Unique in-memory DB per test to avoid state bleed.
 	dsn := fmt.Sprintf(
-		"file:testdb%d?mode=memory&cache=shared&_foreign_keys=on&_journal_mode=WAL",
+		"file:testdb%d?mode=memory&cache=shared&_pragma=foreign_keys(1)&_journal_mode=WAL",
 		time.Now().UnixNano(),
 	)
 	database, err := sql.Open("sqlite", dsn)

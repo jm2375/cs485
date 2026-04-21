@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 
 export default function LoginPage() {
@@ -119,9 +119,6 @@ export default function LoginPage() {
           </button>
         </p>
 
-        <p className="text-xs text-center text-gray-400 mt-4">
-          <Link to="/" className="hover:underline">Back to trip dashboard</Link>
-        </p>
       </div>
     </div>
   );
