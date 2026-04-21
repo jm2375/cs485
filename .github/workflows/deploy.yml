@@ -1,0 +1,55 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Only run after tests pass
+    needs: []
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        run: |
+          docker build --platform linux/amd64 -t tripplanner .
+          docker tag tripplanner:latest 488839855277.dkr.ecr.us-east-1.amazonaws.com/tripplanner:latest
+          docker push 488839855277.dkr.ecr.us-east-1.amazonaws.com/tripplanner:latest
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 488839855277.dkr.ecr.us-east-1.amazonaws.com
+            docker pull 488839855277.dkr.ecr.us-east-1.amazonaws.com/tripplanner:latest
+            docker stop tripplanner || true
+            docker rm tripplanner || true
+            docker run -d \
+              --name tripplanner \
+              --restart always \
+              -p 8080:8080 \
+              -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+              -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+              -e FRONTEND_URL="http://${{ secrets.EC2_HOST }}:8080" \
+              -e SENDGRID_API_KEY="${{ secrets.SENDGRID_API_KEY }}" \
+              -e API_KEY="${{ secrets.GOOGLE_API_KEY }}" \
+              -e SEED_DATA=false \
+              488839855277.dkr.ecr.us-east-1.amazonaws.com/tripplanner:latest
+            docker image prune -f
