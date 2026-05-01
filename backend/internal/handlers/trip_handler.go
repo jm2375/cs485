@@ -225,6 +225,25 @@ func (h *TripHandler) RegenerateShareLink(c *gin.Context) {
 	})
 }
 
+// Delete godoc  DELETE /api/trips/:tripId  (owner only)
+func (h *TripHandler) Delete(c *gin.Context) {
+	tripID := c.Param("tripId")
+	userID := middleware.MustGetUserID(c)
+
+	ok, _ := h.svc.collabSvc.HasPermission(tripID, userID, "admin")
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can delete a trip"})
+		return
+	}
+
+	if _, err := h.svc.database.Exec(`DELETE FROM trips WHERE id = $1`, tripID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "delete trip failed"})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 // PreviewByInviteCode godoc  GET /api/sharelinks/:inviteCode
 func (h *TripHandler) PreviewByInviteCode(c *gin.Context) {
 	code := c.Param("inviteCode")

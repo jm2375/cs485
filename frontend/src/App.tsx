@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Share2, Pencil, X, Check, SunMoon, LogOut, MapPin, ChevronRight, Plus } from 'lucide-react';
+import { Share2, Pencil, X, Check, SunMoon, LogOut, MapPin, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import type { Trip, Collaborator, Role, POI, ItineraryItem, PanelTab, Toast } from './types';
 import { MapView } from './components/MapView';
 import { RightPanel } from './components/RightPanel';
@@ -41,6 +41,7 @@ export default function App() {
   const [newTripDestination, setNewTripDestination] = useState('');
   const [creatingTrip, setCreatingTrip]         = useState(false);
   const [showCreateForm, setShowCreateForm]     = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId]   = useState<string | null>(null);
   const wsRef    = useRef<WebSocket | null>(null);
   const navigate = useNavigate();
 
@@ -230,6 +231,19 @@ export default function App() {
     setNameInput(tripData.name);
   }
 
+  // ── Delete trip ───────────────────────────────────────────────────────────
+  async function handleDeleteTrip(id: string) {
+    try {
+      await api.deleteTrip(id);
+      setMyTrips(prev => prev.filter(t => t.id !== id));
+      setConfirmDeleteId(null);
+      pushToast('Trip deleted');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to delete trip', 'error');
+      setConfirmDeleteId(null);
+    }
+  }
+
   // ── Create trip ───────────────────────────────────────────────────────────
   async function handleCreateTrip(e: React.FormEvent) {
     e.preventDefault();
@@ -392,16 +406,43 @@ export default function App() {
             <ul className="space-y-2 mb-4">
               {myTrips.map(t => (
                 <li key={t.id}>
-                  <button
-                    onClick={() => handleSelectTrip(t.id)}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left group"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 group-hover:text-blue-700">{t.name}</p>
-                      <p className="text-xs text-gray-400">{t.destination}</p>
+                  {confirmDeleteId === t.id ? (
+                    <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-red-200 bg-red-50">
+                      <p className="flex-1 text-sm text-red-700 font-medium">Delete "{t.name}"?</p>
+                      <button
+                        onClick={() => handleDeleteTrip(t.id)}
+                        className="px-3 py-1 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors"
+                      >
+                        Delete
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="px-3 py-1 rounded-lg bg-gray-100 text-gray-600 text-xs font-semibold hover:bg-gray-200 transition-colors"
+                      >
+                        Cancel
+                      </button>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-500 flex-shrink-0" />
-                  </button>
+                  ) : (
+                    <div className="flex items-center gap-1 group/row">
+                      <button
+                        onClick={() => handleSelectTrip(t.id)}
+                        className="flex-1 flex items-center justify-between px-4 py-3 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left group"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 group-hover:text-blue-700">{t.name}</p>
+                          <p className="text-xs text-gray-400">{t.destination}</p>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-500 flex-shrink-0" />
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(t.id)}
+                        aria-label={`Delete trip "${t.name}"`}
+                        className="p-2 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover/row:opacity-100 transition-all flex-shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -601,7 +642,7 @@ export default function App() {
           className="h-[50%] min-h-[200px] md:h-auto md:flex-1 relative flex-shrink-0"
           aria-label="Trip map"
         >
-          <MapView itinerary={itinerary} highlightPOI={hoveredPOI} />
+          <MapView itinerary={itinerary} highlightPOI={hoveredPOI} destination={trip.destination} />
         </section>
         <aside
           className="flex-1 md:flex-none md:w-96 overflow-hidden flex flex-col border-t md:border-t-0 border-gray-200"

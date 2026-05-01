@@ -113,6 +113,7 @@ func main() {
 		api.POST("/trips", tripHandler.Create)
 		api.GET("/trips/:tripId", tripHandler.Get)
 		api.PATCH("/trips/:tripId", tripHandler.Update)
+		api.DELETE("/trips/:tripId", tripHandler.Delete)
 		api.GET("/trips/:tripId/share-link", tripHandler.GetShareLink)
 		api.POST("/trips/:tripId/share-link/regenerate", tripHandler.RegenerateShareLink)
 

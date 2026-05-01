@@ -238,6 +238,14 @@ export const api = {
     return data;
   },
 
+  /** Delete a trip (owner only). Clears the cached trip ID if it matches. */
+  async deleteTrip(tripId: string): Promise<void> {
+    await req<void>('DELETE', `/api/trips/${tripId}`);
+    if (getTripId() === tripId) {
+      localStorage.removeItem('trip_id');
+    }
+  },
+
   /**
    * Opens a WebSocket connection to /ws for the given trip.
    * The JWT is passed as a query parameter (standard practice when

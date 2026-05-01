@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { useMemo, useRef, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { POI, ItineraryItem } from '../types';
 
@@ -30,7 +30,6 @@ function makePinIcon(color: string, label: string, category: string, highlighted
   const w         = highlighted ? 52 : 44;
   const h         = highlighted ? 62 : 54;
   const cx        = w / 2;
-  // Scale the SVG path (originally fits ~42×50) to the icon size
   const scale     = w / 42;
   const borderClr = highlighted ? '#FCD34D' : 'white';
   const borderW   = highlighted ? 3 : 2.5;
@@ -81,14 +80,82 @@ function makePinIcon(color: string, label: string, category: string, highlighted
   });
 }
 
+// ── Map controller: geocodes destination and keeps view synced with itinerary ──
+
+interface MapControllerProps {
+  itinerary: ItineraryItem[];
+  destination: string;
+}
+
+function MapController({ itinerary, destination }: MapControllerProps) {
+  const map = useMap();
+
+  // Refs so geocode callback always reads the latest values without being deps
+  const itineraryRef    = useRef(itinerary);
+  itineraryRef.current  = itinerary;
+  const geocodedCenter  = useRef<[number, number] | null>(null);
+  const initialFitDone  = useRef(false);
+
+  // Geocode the trip destination via Nominatim and fly there when itinerary is empty
+  useEffect(() => {
+    if (!destination) return;
+    geocodedCenter.current = null;
+
+    const controller = new AbortController();
+    fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destination)}&format=json&limit=1`,
+      { signal: controller.signal, headers: { 'Accept-Language': 'en' } },
+    )
+      .then(r => r.json())
+      .then((data: Array<{ lat: string; lon: string }>) => {
+        if (data?.[0]) {
+          const center: [number, number] = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+          geocodedCenter.current = center;
+          if (itineraryRef.current.length === 0) {
+            map.flyTo(center, 12, { duration: 1.5 });
+          }
+        }
+      })
+      .catch(() => {});
+
+    return () => controller.abort();
+  }, [destination, map]);
+
+  // Fit/fly the map to all itinerary markers whenever they change
+  useEffect(() => {
+    if (itinerary.length === 0) {
+      // All items removed — return to the destination view if already geocoded
+      if (geocodedCenter.current) {
+        map.flyTo(geocodedCenter.current, 12, { duration: 1 });
+      }
+      return;
+    }
+
+    const points = itinerary.map(({ poi }) => [poi.lat, poi.lng] as [number, number]);
+    const bounds = L.latLngBounds(points);
+
+    if (!initialFitDone.current) {
+      // First fit: no animation so the map snaps into place immediately on load
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+      initialFitDone.current = true;
+    } else {
+      // Subsequent changes: smooth fly animation
+      map.flyToBounds(bounds, { padding: [60, 60], maxZoom: 15, duration: 1 });
+    }
+  }, [itinerary, map]);
+
+  return null;
+}
+
+// ── MapView ────────────────────────────────────────────────────────────────────
+
 interface MapViewProps {
   itinerary: ItineraryItem[];
   highlightPOI?: POI | null;
+  destination: string;
 }
 
-const TOKYO_CENTER: [number, number] = [35.6895, 139.6917];
-
-export function MapView({ itinerary, highlightPOI }: MapViewProps) {
+export function MapView({ itinerary, highlightPOI, destination }: MapViewProps) {
   const markers = useMemo(() => {
     const seen = new Set<string>();
     const result: Array<{ poi: POI; highlighted: boolean }> = [];
@@ -104,14 +171,30 @@ export function MapView({ itinerary, highlightPOI }: MapViewProps) {
     return result;
   }, [itinerary, highlightPOI]);
 
+  // Compute the initial MapContainer center once on mount so there is no
+  // world-view flash before the MapController effect fires.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initialCenter = useMemo((): [number, number] => {
+    if (itinerary.length > 0) {
+      const lats = itinerary.map(i => i.poi.lat);
+      const lngs = itinerary.map(i => i.poi.lng);
+      return [
+        (Math.min(...lats) + Math.max(...lats)) / 2,
+        (Math.min(...lngs) + Math.max(...lngs)) / 2,
+      ];
+    }
+    return [20, 0]; // neutral world center while geocoding resolves
+  }, []); // intentionally empty — only used for the first render
+
+  const initialZoom = itinerary.length > 0 ? 12 : 2;
+
   return (
     <div className="relative w-full h-full" aria-label="Interactive map of trip destinations">
-      {/* Pulse keyframe injected once */}
       <style>{`@keyframes pulse{from{filter:drop-shadow(0 4px 8px rgba(0,0,0,.45))}to{filter:drop-shadow(0 4px 16px rgba(252,211,77,.9))}}`}</style>
 
       <MapContainer
-        center={TOKYO_CENTER}
-        zoom={12}
+        center={initialCenter}
+        zoom={initialZoom}
         className="w-full h-full"
         zoomControl={true}
         attributionControl={true}
@@ -120,6 +203,8 @@ export function MapView({ itinerary, highlightPOI }: MapViewProps) {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
         />
+
+        <MapController itinerary={itinerary} destination={destination} />
 
         {markers.map(({ poi, highlighted }) => (
           <Marker
