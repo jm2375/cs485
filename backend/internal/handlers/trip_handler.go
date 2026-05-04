@@ -89,7 +89,7 @@ func (h *TripHandler) List(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 
 	rows, err := h.svc.database.Query(
-		`SELECT trip_id FROM trip_collaborators WHERE user_id = $1 ORDER BY joined_at ASC`,
+		`SELECT trip_id, role FROM trip_collaborators WHERE user_id = $1 ORDER BY joined_at ASC`,
 		userID,
 	)
 	if err != nil {
@@ -102,12 +102,13 @@ func (h *TripHandler) List(c *gin.Context) {
 		ID          string `json:"id"`
 		Name        string `json:"name"`
 		Destination string `json:"destination"`
+		IsOwner     bool   `json:"isOwner"`
 	}
 
 	trips := []tripSummary{}
 	for rows.Next() {
-		var tripID string
-		if err := rows.Scan(&tripID); err != nil {
+		var tripID, role string
+		if err := rows.Scan(&tripID, &role); err != nil {
 			continue
 		}
 		var name, destination string
@@ -116,10 +117,40 @@ func (h *TripHandler) List(c *gin.Context) {
 		).Scan(&name, &destination); err != nil {
 			continue
 		}
-		trips = append(trips, tripSummary{ID: tripID, Name: name, Destination: destination})
+		trips = append(trips, tripSummary{
+			ID:          tripID,
+			Name:        name,
+			Destination: destination,
+			IsOwner:     role == string(models.RoleOwner),
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"trips": trips})
+}
+
+// Delete godoc  DELETE /api/trips/:tripId
+func (h *TripHandler) Delete(c *gin.Context) {
+	tripID := c.Param("tripId")
+	userID := middleware.MustGetUserID(c)
+
+	ok, _ := h.svc.collabSvc.HasPermission(tripID, userID, "admin")
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can delete this trip"})
+		return
+	}
+
+	res, err := h.svc.database.Exec(`DELETE FROM trips WHERE id = $1`, tripID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "delete failed"})
+		return
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "trip not found"})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 // Update godoc  PATCH /api/trips/:tripId

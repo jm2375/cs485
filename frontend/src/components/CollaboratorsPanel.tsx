@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 import type { Collaborator, Role } from '../types';
 import { Avatar } from './Avatar';
@@ -22,13 +22,13 @@ function ContextMenu({
   onUpdateRole,
   onRemove,
   onClose,
-  triggerRef,
+  triggerEl,
 }: {
   collaborator: Collaborator;
   onUpdateRole: (id: string, role: Role) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
-  triggerRef: React.RefObject<HTMLButtonElement | null>;
+  triggerEl: HTMLButtonElement | null;
 }) {
   const ref      = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -49,7 +49,7 @@ function ContextMenu({
 
   function handleClose() {
     onClose();
-    triggerRef.current?.focus();
+    triggerEl?.focus();
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -119,11 +119,7 @@ export function CollaboratorsPanel({
   onRemove,
 }: CollaboratorsPanelProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-
-  const setTriggerRef = useCallback((id: string) => (el: HTMLButtonElement | null) => {
-    triggerRefs.current[id] = el;
-  }, []);
+  const [openMenuTriggerEl, setOpenMenuTriggerEl] = useState<HTMLButtonElement | null>(null);
 
   // Group and sort by role order
   const grouped = ROLE_ORDER.flatMap(role =>
@@ -179,8 +175,15 @@ export function CollaboratorsPanel({
                     {c.role !== 'Owner' && (
                       <div className="relative flex-shrink-0">
                         <button
-                          ref={setTriggerRef(c.id)}
-                          onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
+                          onClick={(e) => {
+                            if (openMenuId === c.id) {
+                              setOpenMenuId(null);
+                              setOpenMenuTriggerEl(null);
+                              return;
+                            }
+                            setOpenMenuId(c.id);
+                            setOpenMenuTriggerEl(e.currentTarget);
+                          }}
                           className="p-1 rounded-md hover:bg-gray-100 transition-colors"
                           aria-label={`More options for ${c.name}`}
                           aria-expanded={openMenuId === c.id}
@@ -193,8 +196,11 @@ export function CollaboratorsPanel({
                             collaborator={c}
                             onUpdateRole={onUpdateRole}
                             onRemove={onRemove}
-                            onClose={() => setOpenMenuId(null)}
-                            triggerRef={{ current: triggerRefs.current[c.id] ?? null }}
+                            onClose={() => {
+                              setOpenMenuId(null);
+                              setOpenMenuTriggerEl(null);
+                            }}
+                            triggerEl={openMenuTriggerEl}
                           />
                         )}
                       </div>

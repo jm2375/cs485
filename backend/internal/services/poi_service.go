@@ -29,6 +29,7 @@ func (s *POIService) Search(query, category, near string) ([]*models.POI, error)
 		if err != nil {
 			log.Printf("[poi] google places error, falling back to local: %v", err)
 		} else {
+			pois = filterByCategory(pois, category)
 			s.cacheAll(pois)
 			return pois, nil
 		}
@@ -124,4 +125,29 @@ func (s *POIService) cacheAll(pois []*models.POI) {
 			log.Printf("[poi] cache write for %s: %v", p.ID, err)
 		}
 	}
+}
+
+func filterByCategory(pois []*models.POI, category string) []*models.POI {
+	if category == "" || category == "all" {
+		return pois
+	}
+	filtered := make([]*models.POI, 0, len(pois))
+	for _, p := range pois {
+		if p != nil && matchesCategory(p, category) {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered
+}
+
+func matchesCategory(p *models.POI, category string) bool {
+	if p.Category == category {
+		return true
+	}
+	// Google Places often labels real-world landmarks as "tourist_attraction".
+	// Include those in the Landmark tab so landmark searches are not empty.
+	if category == "landmark" && p.Category == "attraction" && strings.EqualFold(p.Subcategory, "Tourist Attraction") {
+		return true
+	}
+	return false
 }

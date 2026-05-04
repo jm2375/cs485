@@ -10,8 +10,6 @@ jobs:
   integration-tests:
     name: Frontend → Backend Integration
     runs-on: ubuntu-latest
-    env:
-      BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
 
     steps:
       - name: Checkout
@@ -28,12 +26,32 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # Skip when the secret is absent (e.g. forks, Dependabot PRs).
-      # The test suite itself also skips every case when BASE_URL is empty,
-      # so this check is just an early-exit to avoid printing confusing output.
+      - name: Start backend stack from current commit
+        run: docker compose up -d --build
+
+      - name: Wait for backend health
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8080/health >/dev/null; then
+              echo "Backend is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend did not become healthy in time"
+          docker compose logs app
+          exit 1
+
       - name: Run integration tests
-        if: env.BACKEND_BASE_URL != ''
         working-directory: frontend
         env:
-          BASE_URL: ${{ env.BACKEND_BASE_URL }}
+          BASE_URL: http://localhost:8080
         run: npm run test:integration
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v
