@@ -221,8 +221,8 @@ export const api = {
   },
 
   /** Fetch all trips the current user is a member of. */
-  async listTrips(): Promise<{ id: string; name: string; destination: string }[]> {
-    const { trips } = await req<{ trips: { id: string; name: string; destination: string }[] }>('GET', '/api/trips');
+  async listTrips(): Promise<{ id: string; name: string; destination: string; isOwner: boolean }[]> {
+    const { trips } = await req<{ trips: { id: string; name: string; destination: string; isOwner: boolean }[] }>('GET', '/api/trips');
     return trips ?? [];
   },
 
@@ -236,6 +236,14 @@ export const api = {
     const data = await req<{ id: string }>('POST', '/api/trips', { name, destination });
     setTripId(data.id);
     return data;
+  },
+
+  /** Delete a trip (owner only). Clears selected trip if it matches. */
+  async deleteTrip(tripId: string): Promise<void> {
+    await req<void>('DELETE', `/api/trips/${tripId}`);
+    if (getTripId() === tripId) {
+      localStorage.removeItem('trip_id');
+    }
   },
 
   /**

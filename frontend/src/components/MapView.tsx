@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { useEffect, useMemo, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { POI, ItineraryItem } from '../types';
+import { api } from '../api';
 
 const CATEGORY_COLORS: Record<string, string> = {
   restaurant: '#EF4444',
@@ -84,11 +85,27 @@ function makePinIcon(color: string, label: string, category: string, highlighted
 interface MapViewProps {
   itinerary: ItineraryItem[];
   highlightPOI?: POI | null;
+  destination?: string;
 }
 
-const TOKYO_CENTER: [number, number] = [35.6895, 139.6917];
+const WORLD_CENTER: [number, number] = [20, 0];
 
-export function MapView({ itinerary, highlightPOI }: MapViewProps) {
+function ViewportController({ center, zoom }: { center: [number, number]; zoom: number }) {
+  const map = useMap();
+  const lat = center[0];
+  const lng = center[1];
+  useEffect(() => {
+    map.setView([lat, lng], zoom);
+  }, [map, lat, lng, zoom]);
+  return null;
+}
+
+export function MapView({ itinerary, highlightPOI, destination }: MapViewProps) {
+  const [geocodedDestination, setGeocodedDestination] = useState<{
+    query: string;
+    center: [number, number] | null;
+  }>({ query: '', center: null });
+
   const markers = useMemo(() => {
     const seen = new Set<string>();
     const result: Array<{ poi: POI; highlighted: boolean }> = [];
@@ -104,18 +121,61 @@ export function MapView({ itinerary, highlightPOI }: MapViewProps) {
     return result;
   }, [itinerary, highlightPOI]);
 
+  const destinationQuery = destination?.trim() ?? '';
+  useEffect(() => {
+    if (!destinationQuery) {
+      return;
+    }
+
+    let cancelled = false;
+    api.searchPOIs(destinationQuery, 'all', destinationQuery)
+      .then((rows) => {
+        if (cancelled) return;
+        const first = rows[0];
+        if (!first) {
+          setGeocodedDestination({ query: destinationQuery, center: null });
+          return;
+        }
+        const lat = Number(first.lat);
+        const lng = Number(first.lng);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          setGeocodedDestination({ query: destinationQuery, center: [lat, lng] });
+          return;
+        }
+        setGeocodedDestination({ query: destinationQuery, center: null });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setGeocodedDestination({ query: destinationQuery, center: null });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [destinationQuery]);
+
+  const destinationCenter =
+    destinationQuery && geocodedDestination.query === destinationQuery
+      ? geocodedDestination.center
+      : null;
+
+  const markerCenter = markers[0] ? ([markers[0].poi.lat, markers[0].poi.lng] as [number, number]) : null;
+  const mapCenter = markerCenter ?? destinationCenter ?? WORLD_CENTER;
+  const mapZoom = markerCenter ? 12 : destinationCenter ? 10 : 2;
+
   return (
     <div className="relative w-full h-full" aria-label="Interactive map of trip destinations">
       {/* Pulse keyframe injected once */}
       <style>{`@keyframes pulse{from{filter:drop-shadow(0 4px 8px rgba(0,0,0,.45))}to{filter:drop-shadow(0 4px 16px rgba(252,211,77,.9))}}`}</style>
 
       <MapContainer
-        center={TOKYO_CENTER}
-        zoom={12}
+        center={mapCenter}
+        zoom={mapZoom}
         className="w-full h-full"
         zoomControl={true}
         attributionControl={true}
       >
+        <ViewportController center={mapCenter} zoom={mapZoom} />
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'

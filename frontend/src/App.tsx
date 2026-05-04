@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Share2, Pencil, X, Check, SunMoon, LogOut, MapPin, ChevronRight, Plus } from 'lucide-react';
+import { Share2, Pencil, X, Check, SunMoon, LogOut, MapPin, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import type { Trip, Collaborator, Role, POI, ItineraryItem, PanelTab, Toast } from './types';
 import { MapView } from './components/MapView';
 import { RightPanel } from './components/RightPanel';
@@ -35,7 +35,7 @@ export default function App() {
   const [highContrast, setHighContrast] = useState(() => localStorage.getItem('hc') === '1');
   const [currentUser, setCurrentUser]   = useState<{ displayName: string; email: string } | null>(null);
   // Trip selector / create form state
-  const [myTrips, setMyTrips]                   = useState<{ id: string; name: string; destination: string }[]>([]);
+  const [myTrips, setMyTrips]                   = useState<{ id: string; name: string; destination: string; isOwner: boolean }[]>([]);
   const [showTripSelector, setShowTripSelector] = useState(false);
   const [newTripName, setNewTripName]           = useState('');
   const [newTripDestination, setNewTripDestination] = useState('');
@@ -230,6 +230,26 @@ export default function App() {
     setNameInput(tripData.name);
   }
 
+  async function handleDeleteTrip(id: string, name: string) {
+    const confirmed = window.confirm(`Delete "${name}"? This will permanently remove the trip and all associated itinerary, invites, and collaborators.`);
+    if (!confirmed) return;
+
+    try {
+      await api.deleteTrip(id);
+      const trips = await api.listTrips();
+      setMyTrips(trips);
+      if (tripId === id) {
+        setTrip(null);
+        setTripId(null);
+        setItinerary([]);
+        setShowTripSelector(true);
+      }
+      pushToast(`Deleted "${name}"`);
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to delete trip', 'error');
+    }
+  }
+
   // ── Create trip ───────────────────────────────────────────────────────────
   async function handleCreateTrip(e: React.FormEvent) {
     e.preventDefault();
@@ -392,16 +412,32 @@ export default function App() {
             <ul className="space-y-2 mb-4">
               {myTrips.map(t => (
                 <li key={t.id}>
-                  <button
-                    onClick={() => handleSelectTrip(t.id)}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left group"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 group-hover:text-blue-700">{t.name}</p>
-                      <p className="text-xs text-gray-400">{t.destination}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-500 flex-shrink-0" />
-                  </button>
+                  <div className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors group">
+                    <button
+                      onClick={() => handleSelectTrip(t.id)}
+                      className="flex-1 min-w-0 flex items-center justify-between text-left"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-700">{t.name}</p>
+                        <p className="text-xs text-gray-400 truncate">{t.destination}</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-500 flex-shrink-0" />
+                    </button>
+                    {t.isOwner && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleDeleteTrip(t.id, t.name);
+                        }}
+                        className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors flex-shrink-0"
+                        aria-label={`Delete ${t.name}`}
+                        title="Delete trip"
+                      >
+                        <Trash2 className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -601,7 +637,7 @@ export default function App() {
           className="h-[50%] min-h-[200px] md:h-auto md:flex-1 relative flex-shrink-0"
           aria-label="Trip map"
         >
-          <MapView itinerary={itinerary} highlightPOI={hoveredPOI} />
+          <MapView itinerary={itinerary} highlightPOI={hoveredPOI} destination={trip.destination} />
         </section>
         <aside
           className="flex-1 md:flex-none md:w-96 overflow-hidden flex flex-col border-t md:border-t-0 border-gray-200"
