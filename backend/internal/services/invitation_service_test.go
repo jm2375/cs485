@@ -310,7 +310,7 @@ func TestSendEmailInvite_InviteLinkUsesRawToken(t *testing.T) {
 	if len(b.email.calls) == 0 {
 		t.Fatal("no email calls recorded")
 	}
-	if !strings.HasPrefix(b.email.calls[0].inviteLink, "https://app.example.com/invite/") {
+	if !strings.HasPrefix(b.email.calls[0].inviteLink, "https://app.example.com/accept/") {
 		t.Errorf("invite link %q missing expected prefix", b.email.calls[0].inviteLink)
 	}
 }
@@ -326,7 +326,7 @@ func TestSendEmailInvite_StoresHashNotRawToken(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	link := b.email.calls[0].inviteLink
-	parts := strings.SplitN(link, "/invite/", 2)
+	parts := strings.SplitN(link, "/accept/", 2)
 	if len(parts) != 2 {
 		t.Fatalf("unexpected link format: %s", link)
 	}

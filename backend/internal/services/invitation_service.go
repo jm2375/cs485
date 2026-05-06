@@ -103,7 +103,7 @@ func (s *InvitationService) SendEmailInvite(tripID, inviterID, email string, rol
 	s.db.QueryRow(`SELECT name FROM trips WHERE id = $1`, tripID).Scan(&tripName)
 	s.db.QueryRow(`SELECT display_name FROM users WHERE id = $1`, inviterID).Scan(&inviterName)
 
-	inviteLink := fmt.Sprintf("%s/invite/%s", s.frontendURL, rawToken)
+	inviteLink := fmt.Sprintf("%s/accept/%s", s.frontendURL, rawToken)
 	if err := s.emailService.SendInviteEmail(email, inviterName, tripName, inviteLink); err != nil {
 		fmt.Printf("[invitation] email send failed for %s: %v\n", email, err)
 	}

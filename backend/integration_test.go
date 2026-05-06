@@ -885,8 +885,8 @@ func TestFullInvitationAcceptFlow(t *testing.T) {
 	}
 
 	// 3. Extract the raw token from the captured invite link.
-	//    Link format: "<frontendURL>/invite/<rawToken>"
-	parts := strings.SplitN(emailSink.lastInviteLink, "/invite/", 2)
+	//    Link format: "<frontendURL>/accept/<rawToken>"
+	parts := strings.SplitN(emailSink.lastInviteLink, "/accept/", 2)
 	if len(parts) != 2 || parts[1] == "" {
 		t.Fatal("could not extract raw token from captured invite link")
 	}
